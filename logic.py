@@ -102,6 +102,7 @@ def calc_ppo(price):
     hist = ppo_line - signal_line
     return ppo_line, signal_line, hist
 
+@st.cache_data
 def calc_cone(price):
     if isinstance(price, pd.DataFrame): price = price.iloc[:, 0]
     window = 20
