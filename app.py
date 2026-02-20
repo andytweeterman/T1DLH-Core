@@ -1,4 +1,5 @@
 import streamlit as st
+import html
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -177,8 +178,11 @@ if full_data is not None and closes is not None:
             if update_df is not None:
                 update_data = dict(zip(update_df['Key'], update_df['Value']))
                 with st.expander(f"Read Forecast ({update_data.get('Date', 'Current')})", expanded=True):
-                    st.markdown(f'**"{update_data.get("Title", "Market Update")}"**')
-                    st.markdown(str(update_data.get('Text', '')).replace("\\n", "\n"))
+                    title = html.escape(update_data.get("Title", "Market Update"))
+                    st.markdown(f'<div style="font-weight:bold">"{title}"</div>', unsafe_allow_html=True)
+                    text = str(update_data.get('Text', '')).replace("\\n", "\n")
+                    safe_text = html.escape(text).replace("\n", "<br>")
+                    st.markdown(f'<div>{safe_text}</div>', unsafe_allow_html=True)
                 st.info("💡 **Analyst Note:** This commentary is pulled live from the Chief Strategist's desk via the Alpha Swarm CMS.")
             else: st.warning("Strategist feed temporarily unavailable.")
         except Exception: st.warning("Strategist feed temporarily unavailable.")
