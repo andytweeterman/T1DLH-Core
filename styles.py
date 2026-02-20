@@ -56,6 +56,26 @@ def apply_theme():
         [data-testid="stMetricLabel"] {{
             color: {theme['TEXT_SECONDARY']} !important;
         }}
+        
+        /* --- THE TAB FIX --- */
+        button[data-baseweb="tab"] {{
+            background-color: {theme['CARD_BG']} !important;
+            color: {theme['TEXT_SECONDARY']} !important;
+            border-radius: 8px 8px 0px 0px !important;
+            margin-right: 4px !important;
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+            border: 1px solid {theme['BORDER']} !important;
+            border-bottom: none !important;
+        }}
+        button[data-baseweb="tab"][aria-selected="true"] {{
+            background-color: {theme['ACCENT']} !important;
+            color: #24273A !important;
+            font-weight: bold !important;
+        }}
+        button[data-baseweb="tab"]:hover {{
+            opacity: 0.8;
+        }}
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
