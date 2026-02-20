@@ -5,11 +5,12 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import styles
 import logic
+import mock_data
 
 # 1. PAGE SETUP (MUST BE FIRST)
 st.set_page_config(
-    page_title="MacroEffects | Outthink the Market", 
-    page_icon="M", 
+    page_title="MacroEffects | Outthink the Market",
+    page_icon="M",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -20,13 +21,15 @@ theme = styles.apply_theme()
 # 3. DATA LOADING
 full_data = None
 closes = None
+cgm_data = None
 status, color, reason = "SYSTEM BOOT", "#888888", "Initializing..."
 
 try:
     with st.spinner("Connecting to Global Swarm..."):
         full_data = logic.fetch_market_data()
         strat_data = logic.load_strategist_data()
-        
+        cgm_data = mock_data.get_mock_cgm()
+
     if full_data is not None and not full_data.empty:
         closes = full_data['Close']
         gov_df, status, color, reason = logic.calc_governance(full_data)
@@ -60,8 +63,8 @@ with c_menu:
             st.rerun()
         st.divider()
         st.page_link("https://sixmonthstockmarketforecast.com/home/", label="Six Month Forecast", icon="📈")
-        st.link_button("User Guide", "https://github.com/andytweeterman/alpha-swarm-dashboard/blob/main/docs/USER_GUIDE.md") 
-        st.link_button("About Us", "https://sixmonthstockmarketforecast.com/about") 
+        st.link_button("User Guide", "https://github.com/andytweeterman/alpha-swarm-dashboard/blob/main/docs/USER_GUIDE.md")
+        st.link_button("About Us", "https://sixmonthstockmarketforecast.com/about")
 
 # 5. STATUS BAR
 st.markdown(f"""
@@ -75,7 +78,7 @@ st.divider()
 
 # 6. MAIN CONTENT GRID
 if full_data is not None and closes is not None:
-    
+
     tab1, tab2, tab3 = st.tabs(["Markets", "Safety & Stress Tests", "Strategist"])
 
     # --- TAB 1: MARKETS ---
@@ -89,7 +92,7 @@ if full_data is not None and closes is not None:
             {"name": "Gold", "ticker": "GC=F", "color": "#FFD700"},
             {"name": "Crude Oil", "ticker": "CL=F", "color": "#888888"}
         ]
-        
+
         cols = st.columns(3)
         for i, asset in enumerate(assets):
             with cols[i % 3]:
@@ -99,75 +102,77 @@ if full_data is not None and closes is not None:
                         cur, prev = s.iloc[-1], s.iloc[-2]
                         st.markdown(styles.render_market_card(asset['name'], cur, cur-prev, ((cur-prev)/prev)*100), unsafe_allow_html=True)
                         st.plotly_chart(styles.render_sparkline(s.tail(30), asset['color']), use_container_width=True, config={'displayModeBar': False})
-        
+
         st.divider()
-        
-        # Deep Dive Chart
-        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Swarm Deep Dive</span></div>', unsafe_allow_html=True)
-        if 'SPY' in closes:
-            spy = closes['SPY']
-            # FIXED: logic.calc_ppo
-            ppo, sig, hist = logic.calc_ppo(spy)
-            # FIXED: logic.calc_cone
-            sma, std, u_cone, l_cone = logic.calc_cone(spy)
-            # FIXED: logic.generate_forecast
-            f_dates, f_mean, f_upper, f_lower = logic.generate_forecast(spy.index[-1], spy.iloc[-1], std.iloc[-1], days=30)
-            
-            c1, c2 = st.columns(2)
-            with c1: view_mode = st.radio("Select View Horizon:", ["Tactical (60-Day Zoom)", "Strategic (2-Year History)"], horizontal=True)
-            with c2: st.caption("🔒 Global Swarm & Sector Rotation locked for Premium Users.")
 
-            days_back = 60 if "Tactical" in view_mode else 730
-            start_filter = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
-            c_data = full_data[full_data.index >= start_filter]
-            
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
-            
-            fig.add_trace(go.Scatter(x=c_data.index, y=l_cone[l_cone.index >= start_filter], line=dict(width=0), showlegend=False, hoverinfo='skip'), row=1, col=1)
-            fig.add_trace(go.Scatter(x=c_data.index, y=u_cone[u_cone.index >= start_filter], fill='tonexty', fillcolor='rgba(0, 100, 255, 0.1)', line=dict(width=0), name="Fair Value Cone", hoverinfo='skip'), row=1, col=1)
-            fig.add_trace(go.Candlestick(x=c_data.index, open=c_data['Open']['SPY'], high=c_data['High']['SPY'], low=c_data['Low']['SPY'], close=c_data['Close']['SPY'], name='SPY'), row=1, col=1)
+        # Deep Dive Chart -> Continuous Glucose Monitoring (24H)
+        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Continuous Glucose Monitoring (24H)</span></div>', unsafe_allow_html=True)
 
-            if "Tactical" in view_mode:
-                if strat_data is not None:
-                    latest = strat_data.iloc[-1]
-                    dates_fut = [latest['Date'] + timedelta(days=30*i) for i in range(1, 7)]
-                    prices_fut = [latest['Tstk_Adj'] * (1 + latest[f'FP{i}']) for i in range(1, 7)]
-                    fig.add_trace(go.Scatter(x=dates_fut, y=prices_fut, name="Strategist Forecast", line=dict(color=theme["ACCENT_GOLD"], width=3, dash='dot'), mode='lines+markers'), row=1, col=1)
-                else:
-                    fig.add_trace(go.Scatter(x=f_dates, y=f_lower, line=dict(width=0), showlegend=False, hoverinfo='skip'), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=f_dates, y=f_upper, fill='tonexty', fillcolor='rgba(200, 0, 255, 0.15)', line=dict(width=0), name="Uncertainty", hoverinfo='skip'), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=f_dates, y=f_mean, name="Swarm Forecast", line=dict(color=theme["CHART_FONT"], width=2, dash='dot')), row=1, col=1)
+        if cgm_data is not None:
+            fig = go.Figure()
 
-            sub_ppo = ppo[ppo.index >= c_data.index[0]]
-            fig.add_trace(go.Scatter(x=c_data.index, y=sub_ppo, name="Swarm Trend", line=dict(color='cyan', width=1)), row=2, col=1)
-            fig.add_trace(go.Scatter(x=c_data.index, y=sig[sig.index >= c_data.index[0]], name="Signal", line=dict(color='orange', width=1)), row=2, col=1)
-            fig.add_trace(go.Bar(x=c_data.index, y=hist[hist.index >= c_data.index[0]], name="Velocity", marker_color=['#00ff00' if v >= 0 else '#ff0000' for v in hist[hist.index >= c_data.index[0]]]), row=2, col=1)
+            # Glucose Line
+            fig.add_trace(go.Scatter(
+                x=cgm_data['Timestamp'],
+                y=cgm_data['Glucose_Value'],
+                mode='lines',
+                line=dict(color='#00BFFF', width=2), # Bright blue
+                name='Glucose'
+            ))
 
-            fig.update_layout(height=500, template=theme["CHART_TEMPLATE"], margin=dict(l=0, r=0, t=0, b=0), showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color=theme["CHART_FONT"]), xaxis_rangeslider_visible=False)
-            fig.update_xaxes(showgrid=False); fig.update_yaxes(showgrid=False)
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-            st.markdown("""<div class="premium-banner">🔒 Institutional Access Required: Unlock Sector Rotation & Global Flows</div>""", unsafe_allow_html=True)
+            # Target Range (70-180) - Green background
+            fig.add_hrect(
+                y0=70, y1=180,
+                fillcolor="rgba(0, 255, 0, 0.1)",
+                layer="below",
+                line_width=0,
+                annotation_text="Target Range",
+                annotation_position="top left"
+            )
 
-    # --- TAB 2: SAFETY ---
+            # Hypo Threshold (70) - Red line
+            fig.add_hline(
+                y=70,
+                line_dash="dash",
+                line_color="red",
+                annotation_text="Hypo Threshold",
+                annotation_position="bottom right"
+            )
+
+            fig.update_layout(
+                template=theme["CHART_TEMPLATE"],
+                height=400,
+                margin=dict(l=0, r=0, t=0, b=0),
+                xaxis_title="Time",
+                yaxis_title="Glucose (mg/dL)"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("CGM Data Unavailable")
+
+    # --- TAB 2: SAFETY -> LOGISTICAL RISK ---
     with tab2:
-        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Safety Level</span></div>', unsafe_allow_html=True)
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown(f'<div class="gov-pill" style="background: linear-gradient(135deg, {color}, {color}88); border: 1px solid {color};">{status}</div>', unsafe_allow_html=True)
-            st.caption(f"Reason: {reason}")
-        with col2:
-            if '^VIX' in closes:
-                st.metric("Risk (VIX)", f"{closes['^VIX'].iloc[-1]:.2f}", delta_color="inverse", help="Monitors Market Calmness.")
+        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Logistical Risk & Executive Function</span></div>', unsafe_allow_html=True)
+
+        st.markdown(f'<div class="gov-pill" style="background: linear-gradient(135deg, {color}, {color}88); border: 1px solid {color};">{status}</div>', unsafe_allow_html=True)
+        st.caption(f"Reason: {reason}")
 
         st.subheader("⏱️ Tactical Horizons")
-        if 'SPY' in closes:
-            # FIXED: logic.calc_ppo
-            latest_hist = logic.calc_ppo(closes['SPY'])[2].iloc[-1]
-            latest_ppo = logic.calc_ppo(closes['SPY'])[0].iloc[-1]
-            h1, h2, h3 = st.columns(3)
-            with h1: st.info("**1 WEEK (Momentum)**"); st.markdown("🟢 **RISING**" if latest_hist > 0 else "🔴 **WEAKENING**")
-            with h2: st.info("**1 MONTH (Trend)**"); st.markdown("🟢 **BULLISH**" if latest_ppo > 0 else "🔴 **BEARISH**")
-            with h3: st.info("**6 MONTH (Structural)**"); st.markdown("🟢 **SAFE**" if status == "COMFORT ZONE" else f"🔴 **{status}**")
+
+        h1, h2, h3 = st.columns(3)
+        with h1:
+            st.markdown("**1 HOUR (Immediate/Transit)**")
+            st.info("**Commute Risk**")
+            st.markdown("🟢 **SAFE** - Glucose stable at 115, no transit expected.")
+        with h2:
+            st.markdown("**4 HOURS (Upcoming Meetings/Meals)**")
+            st.info("**Context Override**")
+            st.markdown("🟡 **CAUTION** - Team Strategy Review at 2:00 PM. Anticipate adrenaline spike. Suggest delaying correction bolus.")
+        with h3:
+            st.markdown("**24 HOURS (Overnight Logistics)**")
+            st.info("**Supply Prep**")
+            st.markdown("🟢 **NOMINAL** - Sensor expires in 3 days. No immediate action required.")
 
     # --- TAB 3: STRATEGIST ---
     with tab3:
