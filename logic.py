@@ -139,6 +139,7 @@ def load_strategist_data():
         return df
     except Exception: return None
 
+@st.cache_data(ttl=3600)
 def get_strategist_update():
     try:
         sheet_url = os.environ.get("STRATEGIST_SHEET_URL")
