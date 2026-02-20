@@ -16,7 +16,7 @@ def calc_glycemic_risk(data, current_context="Nominal"):
     """
     try:
         if data is None or data.empty:
-            return data, "SYSTEM BOOT", "#888888", "Initializing..."
+            return data, "SYSTEM BOOT", "#A5ADCB", "Initializing..."
 
         latest = data.iloc[-1]
         current_glucose = latest['glucose']
@@ -26,24 +26,24 @@ def calc_glycemic_risk(data, current_context="Nominal"):
         if (current_glucose < 70) or \
            (current_glucose < 90 and trend in ['DoubleDown', 'SingleDown']) or \
            (current_glucose < 100 and current_context == "Driving"):
-            return data, "DEFENSIVE MODE", "#f93e3e", "Critical: Hypoglycemic or Transit Risk"
+            return data, "DEFENSIVE MODE", "#ED8796", "Critical: Hypoglycemic or Transit Risk"
 
         # Logic Gate 2 (Stress / Hyperglycemia - YELLOW)
         elif (current_glucose > 180) or \
              (current_glucose > 140 and current_context in ["High Stress Meeting", "Capital One Strategy Review"]):
-            return data, "CAUTION", "#ffaa00", "Elevated: Contextual Resistance or Hyperglycemia"
+            return data, "CAUTION", "#EED49F", "Elevated: Contextual Resistance or Hyperglycemia"
 
         # Logic Gate 3 (Logistical Watchlist - YELLOW)
         elif (current_context == "Pinewood Derby prep with Lucas" and current_glucose < 100):
-            return data, "WATCHLIST", "#f1c40f", "Activity Risk: Pre-empt with carbs"
+            return data, "WATCHLIST", "#EED49F", "Activity Risk: Pre-empt with carbs"
 
         # Logic Gate 4 (Nominal - GREEN)
         else:
-            return data, "COMFORT ZONE", "#00d26a", "Metabolic & Contextual Stability"
+            return data, "COMFORT ZONE", "#A6DA95", "Metabolic & Contextual Stability"
 
     except Exception as e:
         # In case of error, return safe default or error state
-        return data, "DATA ERROR", "#888888", f"Error: {str(e)}"
+        return data, "DATA ERROR", "#A5ADCB", f"Error: {str(e)}"
 
 # --- STANDARD MATH FUNCTIONS ---
 def calc_ppo(price):
