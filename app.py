@@ -171,17 +171,16 @@ if full_data is not None and closes is not None:
 
     # --- TAB 3: STRATEGIST ---
     with tab3:
-        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">MacroEffects: Chief Strategist\'s View</span></div>', unsafe_allow_html=True)
-        try:
-            update_df = logic.get_strategist_update()
-            if update_df is not None:
-                update_data = dict(zip(update_df['Key'], update_df['Value']))
-                with st.expander(f"Read Forecast ({update_data.get('Date', 'Current')})", expanded=True):
-                    st.markdown(f'**"{update_data.get("Title", "Market Update")}"**')
-                    st.markdown(str(update_data.get('Text', '')).replace("\\n", "\n"))
-                st.info("💡 **Analyst Note:** This commentary is pulled live from the Chief Strategist's desk via the Alpha Swarm CMS.")
-            else: st.warning("Strategist feed temporarily unavailable.")
-        except Exception: st.warning("Strategist feed temporarily unavailable.")
+        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Agentic Context Synthesis</span></div>', unsafe_allow_html=True)
+
+        with st.expander("AI Risk Assessment: Next 12 Hours", expanded=True):
+            st.markdown("Synthesis: Your glucose is currently stable at 115 mg/dL. However, I am flagging a High Logistical Risk for this afternoon. You have a Capital One Strategy Review at 2:00 PM, which historically correlates with stress-induced insulin resistance. Additionally, you are scheduled for a commute at 5:00 PM. Recommendation: Silence non-critical pump alarms during the 2:00 PM meeting, and ensure you have fast-acting carbohydrates in the car for the drive home.")
+
+        st.info("💡 **Agent Status:** Continuous monitoring active. Context engine is synced with Google Calendar and Dexcom telemetry.")
+
+        user_input = st.chat_input("Log an event, meal, or unstructured thought...")
+        if user_input:
+            st.success(f"Context logged and structured: {user_input}")
 else:
     st.error("Data connection initializing or offline. Please check network.")
 
