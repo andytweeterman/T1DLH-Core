@@ -100,13 +100,13 @@ def apply_theme():
     [data-testid="stPopover"] button {{
         border: 1px solid #333333;
         background: #000000;
-        color: #C6A87C; 
+        color: #C6A87C;
         font-size: 28px !important;
         font-weight: bold;
-        height: 70px; 
+        height: 70px;
         width: 100%;
         margin-top: 0px;
-        border-radius: 0 8px 8px 0; 
+        border-radius: 0 8px 8px 0;
         border-left: 1px solid #333333;
         box-shadow: 0 4px 6px rgba(0,0,0,0.5);
         display: flex;
@@ -182,7 +182,7 @@ def apply_theme():
     .market-ticker {{ color: var(--text-secondary); font-size: 11px; margin-bottom: 2px; }}
     .market-price {{ color: var(--text-primary); font-family: 'Fira Code', monospace; font-size: 22px; font-weight: 700; margin: 2px 0; }}
     .market-delta {{ font-family: 'Fira Code', monospace; font-size: 13px; font-weight: 600; }}
-    
+
     div[data-testid="stMetricLabel"] {{ color: var(--text-secondary) !important; font-size: 14px !important; font-weight: 500 !important; }}
     div[data-testid="stMetricValue"] {{ color: var(--text-primary) !important; }}
     header[data-testid="stHeader"] {{ visibility: hidden; }}
@@ -191,21 +191,15 @@ def apply_theme():
     div[data-testid="stHorizontalBlock"] {{ gap: 0rem !important; }}
     </style>
     """, unsafe_allow_html=True)
-    
+
     return theme
 
-def render_market_card(name, price, delta, pct):
-    delta_color_var = "var(--delta-up)" if delta >= 0 else "var(--delta-down)"
-    direction = "up" if delta >= 0 else "down"
-
-    # Accessible label: "S&P 500: 4,500.00, up 10.00 (0.25%)"
-    aria_label = f"{name}: {price:,.2f}, {direction} {abs(delta):.2f} ({pct:+.2f}%)"
-
+def render_metric_card(name, value, sub_value, sub_color="var(--text-secondary)"):
     return f"""
-    <div class="market-card" role="group" aria-label="{aria_label}">
-        <div class="market-ticker" aria-hidden="true">{name}</div>
-        <div class="market-price" aria-hidden="true">{price:,.2f}</div>
-        <div class="market-delta" style="color: {delta_color_var};" aria-hidden="true">{delta:+.2f} ({pct:+.2f}%)</div>
+    <div class="market-card">
+        <div class="market-ticker">{name}</div>
+        <div class="market-price">{value}</div>
+        <div class="market-delta" style="color: {sub_color};">{sub_value}</div>
     </div>
     """
 
@@ -217,8 +211,8 @@ def render_sparkline(data, line_color):
 
 FOOTER_HTML = """
 <div style="font-family: 'Fira Code', monospace; font-size: 10px; color: #888; text-align: center; margin-top: 50px; border-top: 1px solid #30363d; padding-top: 20px; text-transform: uppercase;">
-MACROEFFECTS | ALPHA SWARM PROTOCOL | INSTITUTIONAL RISK GOVERNANCE<br>
-Disclaimer: This tool provides market analysis for informational purposes only. Not financial advice.<br>
-<strong>Institutional Access:</strong> <a href="mailto:institutional@macroeffects.com" style="color: inherit; text-decoration: none; font-weight: bold;">institutional@macroeffects.com</a>
+T1DLH | TYPE 1 DIABETES LIFE HUB | CONTEXTUAL RISK ENGINE<br>
+Disclaimer: This tool provides metabolic analysis for informational purposes only. Not medical advice.<br>
+<strong>System Status:</strong> ONLINE
 </div>
 """
