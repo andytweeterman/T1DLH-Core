@@ -1,218 +1,178 @@
 import streamlit as st
+import pandas as pd
 import plotly.graph_objects as go
-import os
-import base64
+from datetime import datetime, timedelta
+import styles
+import logic
 
-def get_base64_image(image_path):
-    try:
-        # Enforce path security
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        requested_path = os.path.abspath(os.path.join(base_dir, image_path))
-        if not requested_path.startswith(base_dir):
-            return None
+# 1. PAGE SETUP (MUST BE FIRST)
+st.set_page_config(
+    page_title="T1DLH | Contextual Life Hub", 
+    page_icon="🩸", 
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-        if not os.path.exists(requested_path):
-            return None
+# 2. SETUP & THEME
+theme = styles.apply_theme()
 
-        with open(requested_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    except Exception:
-        return None
+# 3. CONTEXT SELECTION (Sidebar)
+with st.sidebar:
+    st.header("Context Settings")
+    current_context = st.selectbox(
+        "Current Activity / Context",
+        ["Nominal", "Driving", "High Stress Meeting", "Capital One Strategy Review", "Pinewood Derby prep with Lucas"],
+        index=0
+    )
+    st.info(f"Active Context: **{current_context}**")
 
-def apply_theme():
-    # Ensure session state is initialized
-    if "dark_mode" not in st.session_state:
-        st.session_state["dark_mode"] = False
+# 4. DATA LOADING
+full_data = None
+status, color, reason = "SYSTEM BOOT", "#A5ADCB", "Initializing..."
 
-    # Define Theme Palettes
-    if st.session_state["dark_mode"]:
-        theme = {
-            "BG_COLOR": "#0e1117",
-            "CARD_BG": "rgba(22, 27, 34, 0.7)",
-            "TEXT_PRIMARY": "#FFFFFF",
-            "TEXT_SECONDARY": "#E0E0E0",
-            "CHART_TEMPLATE": "plotly_dark",
-            "CHART_FONT": "#E6E6E6",
-            "ACCENT_GOLD": "#C6A87C",
-            "DELTA_UP": "#00d26a",
-            "DELTA_DOWN": "#f93e3e"
-        }
+try:
+    with st.spinner("Connecting to Bio-Telemetry..."):
+        full_data = logic.fetch_health_data()
+        
+    if full_data is not None and not full_data.empty:
+        # Calculate Risk
+        _, status, color, reason = logic.calc_glycemic_risk(full_data, current_context=current_context)
     else:
-        theme = {
-            "BG_COLOR": "#ffffff",
-            "CARD_BG": "rgba(255, 255, 255, 0.9)",
-            "TEXT_PRIMARY": "#000000",
-            "TEXT_SECONDARY": "#444444",
-            "CHART_TEMPLATE": "plotly_white",
-            "CHART_FONT": "#111111",
-            "ACCENT_GOLD": "#C6A87C",
-            "DELTA_UP": "#007a3d",
-            "DELTA_DOWN": "#d92b2b"
-        }
+        status, color, reason = "DATA ERROR", "#ED8796", "Data Feed Unavailable"
+except Exception as e:
+    status, color, reason = "SYSTEM ERROR", "#ED8796", f"Connection Failed: {e}"
 
-    # Inject CSS
-    st.markdown(f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Fira+Code:wght@300;500;700&display=swap');
-
-    :root {{
-        --bg-color: {theme['BG_COLOR']};
-        --card-bg: {theme['CARD_BG']};
-        --text-primary: {theme['TEXT_PRIMARY']};
-        --text-secondary: {theme['TEXT_SECONDARY']};
-        --accent-gold: {theme['ACCENT_GOLD']};
-        --delta-up: {theme['DELTA_UP']};
-        --delta-down: {theme['DELTA_DOWN']};
-    }}
-
-    .stApp {{ background-color: var(--bg-color) !important; font-family: 'Inter', sans-serif; }}
-
-    /* FIX FOR PC LAYOUT: Maximize Screen Usage */
-    .block-container {{
-        padding-top: 2rem !important;
-        padding-bottom: 2rem !important;
-        padding-left: 2rem !important;
-        padding-right: 2rem !important;
-        max-width: 100% !important;
-    }}
-
-    /* --- TABS (Restored in v56.2) --- */
-    button[data-baseweb="tab"] {{
-        background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.05) 100%) !important;
-        border: 1px solid rgba(128,128,128,0.2) !important;
-        border-radius: 6px 6px 0 0 !important;
-        color: var(--text-secondary) !important;
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
-        font-size: 14px;
-        text-transform: uppercase;
-        padding: 10px 10px;
-        margin-right: 2px;
-        flex-grow: 1;
-    }}
-    button[data-baseweb="tab"][aria-selected="true"] {{
-        background: linear-gradient(180deg, #2d343f 0%, #1a1f26 100%) !important;
-        border-top: 2px solid var(--accent-gold) !important;
-    }}
-    button[data-baseweb="tab"][aria-selected="true"] p {{ color: #FFFFFF !important; }}
-
-    /* --- MENU BUTTON STYLING (Restored in v56.3) --- */
-    [data-testid="stPopover"] button {{
-        border: 1px solid #333333;
-        background: #000000;
-        color: #C6A87C;
-        font-size: 28px !important;
-        font-weight: bold;
-        height: 70px;
-        width: 100%;
-        margin-top: 0px;
-        border-radius: 0 8px 8px 0;
-        border-left: 1px solid #333333;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 100;
-    }}
-    [data-testid="stPopover"] button:hover {{ border-color: #C6A87C; color: #FFFFFF; }}
-
-    /* --- TEXT ENFORCERS --- */
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {{ color: var(--text-primary) !important; }}
-    h3 {{ color: var(--text-secondary) !important; font-weight: 600 !important; }}
-
-    /* --- HEADER CONTAINER (Seamless Black) --- */
-    .header-bar {{
-        background: #000000;
-        height: 70px;
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        padding-left: 15px;
-        padding-right: 15px;
-        border: 1px solid #333333;
-        border-right: none;
-        border-radius: 8px 0 0 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.5);
-        overflow: hidden;
-    }}
-
-    .header-text-col {{
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        margin-left: 12px;
-        line-height: 1.1;
-    }}
-
-    .steel-text-main {{
-        background: linear-gradient(180deg, #FFFFFF 0%, #E0E0E0 40%, #A0A0A0 55%, #FFFFFF 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-family: 'Inter', sans-serif;
-        font-weight: 800;
-        font-size: 24px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-
-    .steel-text-sub {{
-        background: linear-gradient(180deg, #E0E0E0 0%, #A0A0A0 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-top: 2px;
-        white-space: nowrap;
-    }}
-
-    /* MOBILE ADJUSTMENT */
-    @media (max-width: 400px) {{
-        .steel-text-sub {{ font-size: 9px; white-space: normal; }}
-        .block-container {{ padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
-    }}
-
-    /* COMPONENTS */
-    .gov-pill {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-family: 'Fira Code', monospace; font-size: 11px; font-weight: bold; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-left: 10px; vertical-align: middle; text-transform: uppercase; }}
-    .premium-pill {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 800; color: #3b2c00; background: linear-gradient(135deg, #bf953f 0%, #fcf6ba 100%); box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-left: 5px; vertical-align: middle; letter-spacing: 1px; }}
-    .steel-sub-header {{ background: linear-gradient(145deg, #1a1f26, #2d343f); padding: 8px 15px; border-radius: 6px; border: 1px solid #4a4f58; box-shadow: 0 2px 4px rgba(0,0,0,0.3); margin-bottom: 15px; }}
-    .market-card {{ background: var(--card-bg); border: 1px solid rgba(128,128,128,0.2); border-radius: 6px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; margin-bottom: 10px; }}
-    .market-ticker {{ color: var(--text-secondary); font-size: 11px; margin-bottom: 2px; }}
-    .market-price {{ color: var(--text-primary); font-family: 'Fira Code', monospace; font-size: 22px; font-weight: 700; margin: 2px 0; }}
-    .market-delta {{ font-family: 'Fira Code', monospace; font-size: 13px; font-weight: 600; }}
-
-    div[data-testid="stMetricLabel"] {{ color: var(--text-secondary) !important; font-size: 14px !important; font-weight: 500 !important; }}
-    div[data-testid="stMetricValue"] {{ color: var(--text-primary) !important; }}
-    header[data-testid="stHeader"] {{ visibility: hidden; }}
-    #MainMenu, footer {{ visibility: hidden; }}
-    div[data-testid="column"] {{ padding: 0px !important; }}
-    div[data-testid="stHorizontalBlock"] {{ gap: 0rem !important; }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    return theme
-
-def render_metric_card(name, value, sub_value, sub_color="var(--text-secondary)"):
-    return f"""
-    <div class="market-card">
-        <div class="market-ticker">{name}</div>
-        <div class="market-price">{value}</div>
-        <div class="market-delta" style="color: {sub_color};">{sub_value}</div>
+# 5. HEADER UI
+c_title, c_menu = st.columns([0.90, 0.10], gap="small")
+with c_title:
+    header_html = f"""
+    <div class="header-bar">
+        <div class="header-text-col">
+            <span class="steel-text-main" style="font-size: 28px; color: {theme.get('TEXT_PRIMARY', '#CAD3F5')};">Personal ERM: Contextual Life Hub</span><br>
+            <span class="steel-text-sub" style="color: {theme.get('TEXT_SECONDARY', '#A5ADCB')};">Cognitive Offloading & Risk Governance</span>
+        </div>
     </div>
     """
+    st.markdown(header_html, unsafe_allow_html=True)
 
-def render_sparkline(data, line_color):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data.index, y=data, mode='lines', line=dict(color=line_color, width=2), hoverinfo='skip'))
-    fig.update_layout(height=40, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(visible=False), yaxis=dict(visible=False), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-    return fig
+with c_menu:
+    with st.popover("☰", use_container_width=True):
+        st.caption("Settings")
+        is_dark = st.toggle("Dark Mode", value=st.session_state.get("dark_mode", False))
+        if is_dark != st.session_state.get("dark_mode", False):
+            st.session_state["dark_mode"] = is_dark
+            st.rerun()
 
-FOOTER_HTML = """
-<div style="font-family: 'Fira Code', monospace; font-size: 10px; color: #888; text-align: center; margin-top: 50px; border-top: 1px solid #30363d; padding-top: 20px; text-transform: uppercase;">
-T1DLH | TYPE 1 DIABETES LIFE HUB | CONTEXTUAL RISK ENGINE<br>
-Disclaimer: This tool provides metabolic analysis for informational purposes only. Not medical advice.<br>
-<strong>System Status:</strong> ONLINE
+# 6. STATUS BAR
+st.markdown(f"""
+<div style="margin-bottom: 20px; margin-top: 5px;">
+    <span style="font-family: 'Inter'; font-weight: 600; font-size: 16px; color: var(--text-secondary);">System Status</span>
+    <div class="gov-pill" style="background: linear-gradient(135deg, {color}, {color}88); border: 1px solid {color};">{status}</div>
 </div>
-"""
+""", unsafe_allow_html=True)
+
+if reason:
+    st.caption(f"**Analysis:** {reason}")
+
+st.divider()
+
+# 7. MAIN DASHBOARD TABS
+if full_data is not None and not full_data.empty:
+    
+    tab1, tab2, tab3 = st.tabs(["Metabolic State", "Logistical Risk", "Agentic Context"])
+    
+    # --- TAB 1: METABOLIC STATE ---
+    with tab1:
+        st.markdown('### Metabolic State Grid')
+        
+        # Grid Data
+        latest_row = full_data.iloc[-1]
+        prev_row = full_data.iloc[-2] if len(full_data) > 1 else latest_row
+        
+        # Handle dynamic column names from Jules's mock data generator
+        bg_col = 'glucose' if 'glucose' in full_data.columns else 'Glucose_Value'
+        trend_col = 'trend' if 'trend' in full_data.columns else 'Trend'
+        time_col = 'Timestamp' if 'Timestamp' in full_data.columns else full_data.columns[0]
+        
+        current_bg = latest_row[bg_col]
+        bg_delta = current_bg - prev_row[bg_col]
+        current_trend = latest_row[trend_col]
+        
+        cols = st.columns(4)
+        with cols[0]: st.metric(label="Glucose (mg/dL)", value=int(current_bg), delta=int(bg_delta))
+        with cols[1]: st.metric(label="Trend Vector", value=str(current_trend))
+        with cols[2]: st.metric(label="Active Insulin (IOB)", value="1.5 U", delta="-0.2 U")
+        with cols[3]: st.metric(label="Next Event Context", value=current_context, delta="In 45 mins", delta_color="off")
+        
+        st.markdown("---")
+        st.markdown('### Continuous Glucose Monitoring (24H)')
+        
+        # High-Fidelity Plotly Chart
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=full_data[time_col] if time_col in full_data.columns else full_data.index, 
+            y=full_data[bg_col], 
+            mode='lines', 
+            line=dict(color="#8AADF4", width=3), # Macchiato Blue
+            name="Glucose"
+        ))
+        
+        # Target Range Cone
+        fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.15)", opacity=0.5) # Macchiato Green
+        fig.add_hline(y=70, line_dash="dash", line_color="#ED8796", annotation_text="Hypo Threshold") # Macchiato Red
+        
+        fig.update_layout(
+            template=theme.get("CHART_TEMPLATE", "plotly_dark"),
+            height=400,
+            margin=dict(l=0, r=0, t=30, b=0),
+            yaxis_title="mg/dL"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # --- TAB 2: LOGISTICAL RISK ---
+    with tab2:
+        st.markdown('### Logistical Risk & Executive Function')
+        
+        h1, h2, h3 = st.columns(3)
+        with h1: 
+            st.info("**1 HOUR (Immediate/Transit)**")
+            if current_context == "Driving" and current_bg < 100:
+                st.error("🔴 **TRANSIT RISK** - Glucose dropping before commute. Consume 15g carbs.")
+            else:
+                st.success("🟢 **SAFE** - Glucose stable, no immediate transit risk.")
+                
+        with h2: 
+            st.info("**4 HOURS (Upcoming Events)**")
+            if "Meeting" in current_context or "Strategy" in current_context:
+                st.warning(f"🟡 **CAUTION** - {current_context} approaching. Anticipate adrenaline spike. Delay bolus.")
+            else:
+                st.success("🟢 **NOMINAL** - No high-stress events on schedule.")
+                
+        with h3: 
+            st.info("**24 HOURS (Overnight Logistics)**")
+            st.success("🟢 **NOMINAL** - Sensor expires in 3 days. No action required.")
+
+    # --- TAB 3: AGENTIC CONTEXT ---
+    with tab3:
+        st.markdown('### Agentic Context Synthesis')
+        
+        with st.expander("AI Risk Assessment: Next 12 Hours", expanded=True):
+            st.markdown(f"""
+            **Synthesis:** Your glucose is currently at {int(current_bg)} mg/dL. 
+            I am tracking your upcoming context: **{current_context}**. 
+            
+            **Recommendation:** Maintain current basal rate. If transitioning to a high-stress environment, consider silencing non-critical alerts to prevent alarm fatigue.
+            """)
+            
+        st.info("💡 **Agent Status:** Continuous monitoring active. Ready to connect to local LM Studio endpoint.")
+        
+        # Frictionless Capture Bar
+        user_input = st.chat_input("Log an event, meal, or unstructured thought...")
+        if user_input:
+            st.success(f"Context logged and structured: {user_input}")
+            # Note: This will be piped to LM Studio in the next step!
+
+else:
+    st.error("Data connection initializing or offline. Please check network.")
+
+st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
