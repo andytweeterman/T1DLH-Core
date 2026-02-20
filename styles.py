@@ -3,12 +3,34 @@ import plotly.graph_objects as go
 import os
 import base64
 
+# Define assets directory relative to this file
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets")
+
 def get_base64_image(image_path):
     try:
         # Enforce path security
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        requested_path = os.path.abspath(os.path.join(base_dir, image_path))
-        if not requested_path.startswith(base_dir):
+
+        # Ensure assets directory exists
+        if not os.path.exists(ASSETS_DIR):
+             return None
+
+        requested_path = os.path.realpath(os.path.join(ASSETS_DIR, image_path))
+
+        # 1. Check if path is within assets_dir
+        # Using commonpath is safer than startswith for directory containment
+        try:
+            # os.path.commonpath returns the longest common sub-path
+            # If requested_path is inside ASSETS_DIR, commonpath should be ASSETS_DIR
+            if os.path.commonpath([requested_path, ASSETS_DIR]) != ASSETS_DIR:
+                return None
+        except ValueError:
+            # Can happen if paths are on different drives
+            return None
+
+        # 2. Check extension
+        valid_extensions = {".png", ".jpg", ".jpeg", ".gif", ".svg"}
+        _, ext = os.path.splitext(requested_path)
+        if ext.lower() not in valid_extensions:
             return None
 
         if not os.path.exists(requested_path):
@@ -100,13 +122,13 @@ def apply_theme():
     [data-testid="stPopover"] button {{
         border: 1px solid #333333;
         background: #000000;
-        color: #C6A87C; 
+        color: #C6A87C;
         font-size: 28px !important;
         font-weight: bold;
-        height: 70px; 
+        height: 70px;
         width: 100%;
         margin-top: 0px;
-        border-radius: 0 8px 8px 0; 
+        border-radius: 0 8px 8px 0;
         border-left: 1px solid #333333;
         box-shadow: 0 4px 6px rgba(0,0,0,0.5);
         display: flex;
@@ -182,7 +204,7 @@ def apply_theme():
     .market-ticker {{ color: var(--text-secondary); font-size: 11px; margin-bottom: 2px; }}
     .market-price {{ color: var(--text-primary); font-family: 'Fira Code', monospace; font-size: 22px; font-weight: 700; margin: 2px 0; }}
     .market-delta {{ font-family: 'Fira Code', monospace; font-size: 13px; font-weight: 600; }}
-    
+
     div[data-testid="stMetricLabel"] {{ color: var(--text-secondary) !important; font-size: 14px !important; font-weight: 500 !important; }}
     div[data-testid="stMetricValue"] {{ color: var(--text-primary) !important; }}
     header[data-testid="stHeader"] {{ visibility: hidden; }}
@@ -191,7 +213,7 @@ def apply_theme():
     div[data-testid="stHorizontalBlock"] {{ gap: 0rem !important; }}
     </style>
     """, unsafe_allow_html=True)
-    
+
     return theme
 
 def render_market_card(name, price, delta, pct):
