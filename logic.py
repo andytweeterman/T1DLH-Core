@@ -23,6 +23,7 @@ def fetch_market_data():
     except Exception:
         return None
 
+@st.cache_data
 def calc_governance(data):
     """Calculates the 'Traffic Light' safety status with smoothed logic."""
     try:
