@@ -80,7 +80,7 @@ if full_data is not None and closes is not None:
 
     # --- TAB 1: MARKETS ---
     with tab1:
-        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Global Asset Grid</span></div>', unsafe_allow_html=True)
+        st.markdown(styles.render_sub_header("Global Asset Grid"), unsafe_allow_html=True)
         assets = [
             {"name": "Dow Jones", "ticker": "^DJI", "color": "#00CC00"},
             {"name": "S&P 500", "ticker": "SPY", "color": "#00CC00"},
@@ -103,7 +103,7 @@ if full_data is not None and closes is not None:
         st.divider()
         
         # Deep Dive Chart
-        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Swarm Deep Dive</span></div>', unsafe_allow_html=True)
+        st.markdown(styles.render_sub_header("Swarm Deep Dive"), unsafe_allow_html=True)
         if 'SPY' in closes:
             spy = closes['SPY']
             # FIXED: logic.calc_ppo
@@ -150,7 +150,7 @@ if full_data is not None and closes is not None:
 
     # --- TAB 2: SAFETY ---
     with tab2:
-        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Safety Level</span></div>', unsafe_allow_html=True)
+        st.markdown(styles.render_sub_header("Safety Level"), unsafe_allow_html=True)
         col1, col2 = st.columns([2, 1])
         with col1:
             st.markdown(f'<div class="gov-pill" style="background: linear-gradient(135deg, {color}, {color}88); border: 1px solid {color};">{status}</div>', unsafe_allow_html=True)
@@ -171,7 +171,7 @@ if full_data is not None and closes is not None:
 
     # --- TAB 3: STRATEGIST ---
     with tab3:
-        st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">MacroEffects: Chief Strategist\'s View</span></div>', unsafe_allow_html=True)
+        st.markdown(styles.render_sub_header("MacroEffects: Chief Strategist's View"), unsafe_allow_html=True)
         try:
             update_df = logic.get_strategist_update()
             if update_df is not None:

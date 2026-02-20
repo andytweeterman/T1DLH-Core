@@ -100,13 +100,13 @@ def apply_theme():
     [data-testid="stPopover"] button {{
         border: 1px solid #333333;
         background: #000000;
-        color: #C6A87C; 
+        color: #C6A87C;
         font-size: 28px !important;
         font-weight: bold;
-        height: 70px; 
+        height: 70px;
         width: 100%;
         margin-top: 0px;
-        border-radius: 0 8px 8px 0; 
+        border-radius: 0 8px 8px 0;
         border-left: 1px solid #333333;
         box-shadow: 0 4px 6px rgba(0,0,0,0.5);
         display: flex;
@@ -182,7 +182,7 @@ def apply_theme():
     .market-ticker {{ color: var(--text-secondary); font-size: 11px; margin-bottom: 2px; }}
     .market-price {{ color: var(--text-primary); font-family: 'Fira Code', monospace; font-size: 22px; font-weight: 700; margin: 2px 0; }}
     .market-delta {{ font-family: 'Fira Code', monospace; font-size: 13px; font-weight: 600; }}
-    
+
     div[data-testid="stMetricLabel"] {{ color: var(--text-secondary) !important; font-size: 14px !important; font-weight: 500 !important; }}
     div[data-testid="stMetricValue"] {{ color: var(--text-primary) !important; }}
     header[data-testid="stHeader"] {{ visibility: hidden; }}
@@ -191,7 +191,7 @@ def apply_theme():
     div[data-testid="stHorizontalBlock"] {{ gap: 0rem !important; }}
     </style>
     """, unsafe_allow_html=True)
-    
+
     return theme
 
 def render_market_card(name, price, delta, pct):
@@ -214,6 +214,9 @@ def render_sparkline(data, line_color):
     fig.add_trace(go.Scatter(x=data.index, y=data, mode='lines', line=dict(color=line_color, width=2), hoverinfo='skip'))
     fig.update_layout(height=40, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(visible=False), yaxis=dict(visible=False), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
     return fig
+
+def render_sub_header(text):
+    return f'<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">{text}</span></div>'
 
 FOOTER_HTML = """
 <div style="font-family: 'Fira Code', monospace; font-size: 10px; color: #888; text-align: center; margin-top: 50px; border-top: 1px solid #30363d; padding-top: 20px; text-transform: uppercase;">
