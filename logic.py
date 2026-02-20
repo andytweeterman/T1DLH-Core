@@ -1,96 +1,49 @@
 import pandas as pd
 import numpy as np
-import yfinance as yf
 from datetime import datetime, timedelta
 import os
 import streamlit as st
+from mock_data import get_mock_cgm
 
 @st.cache_data(ttl=3600)
-def fetch_market_data():
-    """Fetches data from Yahoo Finance and cleans it immediately."""
+def fetch_health_data():
+    """Fetches mock CGM data."""
+    return get_mock_cgm()
+
+def calc_glycemic_risk(data, current_context="Nominal"):
+    """
+    Analyzes the latest row in the CGM data and applies ERM style rules.
+    """
     try:
-        tickers = ["SPY", "^DJI", "^IXIC", "HYG", "IEF", "^VIX", "RSP", "DX-Y.NYB", "GC=F", "CL=F"]
-        start = (datetime.now() - timedelta(days=1825)).strftime('%Y-%m-%d')
-        data = yf.download(tickers, start=start, progress=False)
-        
         if data is None or data.empty:
-            return None
+            return data, "SYSTEM BOOT", "#888888", "Initializing..."
 
-        # Fix the "Sunday Gap" by carrying forward Friday's data
-        data = data.ffill()
-        
-        return data
-    except Exception:
-        return None
+        latest = data.iloc[-1]
+        current_glucose = latest['glucose']
+        trend = latest['trend']
 
-def calc_governance(data):
-    """Calculates the 'Traffic Light' safety status with smoothed logic."""
-    try:
-        closes = data['Close']
-        df = pd.DataFrame(index=closes.index)
-        
-        # --- CALCULATE METRICS ---
-        df['Credit_Ratio'] = closes["HYG"] / closes["IEF"]
-        df['Credit_Delta'] = df['Credit_Ratio'].pct_change(10)
-        
-        if "^VIX" in closes.columns:
-            df['VIX'] = closes["^VIX"]
+        # Logic Gate 1 (Severe Hypo / Transit Risk - RED)
+        if (current_glucose < 70) or \
+           (current_glucose < 90 and trend in ['DoubleDown', 'SingleDown']) or \
+           (current_glucose < 100 and current_context == "Driving"):
+            return data, "DEFENSIVE MODE", "#f93e3e", "Critical: Hypoglycemic or Transit Risk"
+
+        # Logic Gate 2 (Stress / Hyperglycemia - YELLOW)
+        elif (current_glucose > 180) or \
+             (current_glucose > 140 and current_context in ["High Stress Meeting", "Capital One Strategy Review"]):
+            return data, "CAUTION", "#ffaa00", "Elevated: Contextual Resistance or Hyperglycemia"
+
+        # Logic Gate 3 (Logistical Watchlist - YELLOW)
+        elif (current_context == "Pinewood Derby prep with Lucas" and current_glucose < 100):
+            return data, "WATCHLIST", "#f1c40f", "Activity Risk: Pre-empt with carbs"
+
+        # Logic Gate 4 (Nominal - GREEN)
         else:
-            df['VIX'] = 0.0
+            return data, "COMFORT ZONE", "#00d26a", "Metabolic & Contextual Stability"
 
-        df['Breadth_Ratio'] = closes["RSP"] / closes["SPY"]
-        df['Breadth_Delta'] = df['Breadth_Ratio'].pct_change(20)
-        df['DXY_Delta'] = closes["DX-Y.NYB"].pct_change(5)
-        
-        # --- DEFINE TRIGGERS ---
-        CREDIT_TRIG = -0.015  # -1.5% widening
-        VIX_PANIC = 25.0      # Increased from 24 to 25 for stability
-        BREADTH_TRIG = -0.025
-        DXY_SPIKE = 0.02
-        
-        # --- LOGIC GATES ---
-        # 1. Structural Stress (Credit or Dollar)
-        stress_signal = ((df['Credit_Delta'] < CREDIT_TRIG) | (df['DXY_Delta'] > DXY_SPIKE)).fillna(False)
-        
-        # 2. VIX Panic
-        vix_signal = (df['VIX'] > VIX_PANIC).fillna(False)
-        
-        # 3. Breadth Breakdown
-        breadth_signal = (df['Breadth_Delta'] < BREADTH_TRIG).fillna(False)
-        
-        if not df.empty:
-            latest = df.iloc[-1]
-            l_stress = stress_signal.iloc[-1]
-            l_vix = vix_signal.iloc[-1]
-            l_breadth = breadth_signal.iloc[-1]
-        else:
-            return df, "SYSTEM BOOT", "#888888", "Initializing..."
-
-        # --- DETERMINE STATUS (The Tuned Logic) ---
-        
-        # RED: Requires Stress + VIX Panic (The Confirmation Rule)
-        if l_stress and l_vix:
-             return df, "DEFENSIVE MODE", "#f93e3e", "Structural Failure Confirmed"
-             
-        # OR RED: If VIX is simply massive (>30)
-        elif latest['VIX'] > 30:
-             return df, "DEFENSIVE MODE", "#f93e3e", "Extreme Volatility"
-
-        # YELLOW: Stress Detected (but VIX < 25) OR Breadth Warning
-        elif l_stress:
-             return df, "CAUTION", "#ffaa00", "Credit/Currency Stress"
-        elif l_vix:
-             return df, "CAUTION", "#ffaa00", "Elevated Volatility"
-        elif l_breadth:
-             return df, "WATCHLIST", "#f1c40f", "Market Breadth Narrowing"
-             
-        # GREEN: All Clear
-        else: 
-            return df, "COMFORT ZONE", "#00d26a", "System Integrity Nominal"
-            
-    except Exception:
-        safe_df = pd.DataFrame()
-        return safe_df, "DATA ERROR", "#888888", "Feed Disconnected"
+    except Exception as e:
+        # In case of error, return safe default or error state
+        return data, "DATA ERROR", "#888888", f"Error: {str(e)}"
 
 # --- STANDARD MATH FUNCTIONS ---
 def calc_ppo(price):
