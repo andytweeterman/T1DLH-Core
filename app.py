@@ -106,11 +106,8 @@ if full_data is not None and closes is not None:
         st.markdown('<div class="steel-sub-header"><span class="steel-text-main" style="font-size: 20px !important;">Swarm Deep Dive</span></div>', unsafe_allow_html=True)
         if 'SPY' in closes:
             spy = closes['SPY']
-            # FIXED: logic.calc_ppo
             ppo, sig, hist = logic.calc_ppo(spy)
-            # FIXED: logic.calc_cone
             sma, std, u_cone, l_cone = logic.calc_cone(spy)
-            # FIXED: logic.generate_forecast
             f_dates, f_mean, f_upper, f_lower = logic.generate_forecast(spy.index[-1], spy.iloc[-1], std.iloc[-1], days=30)
             
             c1, c2 = st.columns(2)
@@ -161,7 +158,6 @@ if full_data is not None and closes is not None:
 
         st.subheader("⏱️ Tactical Horizons")
         if 'SPY' in closes:
-            # FIXED: logic.calc_ppo
             latest_hist = logic.calc_ppo(closes['SPY'])[2].iloc[-1]
             latest_ppo = logic.calc_ppo(closes['SPY'])[0].iloc[-1]
             h1, h2, h3 = st.columns(3)
