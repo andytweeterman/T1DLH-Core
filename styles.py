@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import os
 import base64
 
+@st.cache_data
 def get_base64_image(image_path):
     try:
         # Enforce path security
