@@ -162,8 +162,9 @@ if full_data is not None and closes is not None:
         st.subheader("⏱️ Tactical Horizons")
         if 'SPY' in closes:
             # FIXED: logic.calc_ppo
-            latest_hist = logic.calc_ppo(closes['SPY'])[2].iloc[-1]
-            latest_ppo = logic.calc_ppo(closes['SPY'])[0].iloc[-1]
+            ppo_data = logic.calc_ppo(closes['SPY'])
+            latest_hist = ppo_data[2].iloc[-1]
+            latest_ppo = ppo_data[0].iloc[-1]
             h1, h2, h3 = st.columns(3)
             with h1: st.info("**1 WEEK (Momentum)**"); st.markdown("🟢 **RISING**" if latest_hist > 0 else "🔴 **WEAKENING**")
             with h2: st.info("**1 MONTH (Trend)**"); st.markdown("🟢 **BULLISH**" if latest_ppo > 0 else "🔴 **BEARISH**")
