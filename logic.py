@@ -1,105 +1,47 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import os
-import streamlit as st
-from mock_data import get_mock_cgm
 
-@st.cache_data(ttl=3600)
 def fetch_health_data():
-    """Fetches mock CGM data."""
-    return get_mock_cgm()
+    """Generates 24 hours of mock CGM data."""
+    now = datetime.now()
+    times = [now - timedelta(minutes=5*i) for i in range(288)]
+    times.reverse()
+    
+    # Create a realistic glucose curve
+    base = 120 + 30 * np.sin(np.linspace(0, 3*np.pi, 288))
+    noise = np.random.normal(0, 4, 288)
+    glucose = np.clip(base + noise, 65, 220).astype(int)
+    
+    df = pd.DataFrame({'Timestamp': times, 'Glucose_Value': glucose})
+    df['Trend'] = 'Flat'
+    df.loc[df['Glucose_Value'].diff() > 3, 'Trend'] = 'SingleUp'
+    df.loc[df['Glucose_Value'].diff() < -3, 'Trend'] = 'SingleDown'
+    
+    return df
 
-def calc_glycemic_risk(data, current_context="Nominal"):
-    """
-    Analyzes the latest row in the CGM data and applies ERM style rules.
-    """
+def calc_glycemic_risk(df, current_context="Nominal"):
+    """Applies ERM logic to biological data."""
     try:
-        if data is None or data.empty:
-            return data, "SYSTEM BOOT", "#A5ADCB", "Initializing..."
-
-        latest = data.iloc[-1]
-        current_glucose = latest['glucose']
-        trend = latest['trend']
-
-        # Logic Gate 1 (Severe Hypo / Transit Risk - RED)
-        if (current_glucose < 70) or \
-           (current_glucose < 90 and trend in ['DoubleDown', 'SingleDown']) or \
-           (current_glucose < 100 and current_context == "Driving"):
-            return data, "DEFENSIVE MODE", "#ED8796", "Critical: Hypoglycemic or Transit Risk"
-
-        # Logic Gate 2 (Stress / Hyperglycemia - YELLOW)
-        elif (current_glucose > 180) or \
-             (current_glucose > 140 and current_context in ["High Stress Meeting", "Capital One Strategy Review"]):
-            return data, "CAUTION", "#EED49F", "Elevated: Contextual Resistance or Hyperglycemia"
-
-        # Logic Gate 3 (Logistical Watchlist - YELLOW)
-        elif (current_context == "Pinewood Derby prep with Lucas" and current_glucose < 100):
-            return data, "WATCHLIST", "#EED49F", "Activity Risk: Pre-empt with carbs"
-
-        # Logic Gate 4 (Nominal - GREEN)
+        latest = df.iloc[-1]
+        bg = latest['Glucose_Value']
+        trend = latest['Trend']
+        
+        # Logic Gate 1 (Critical Risk)
+        if bg < 70 or (bg < 90 and trend == 'SingleDown') or (bg < 100 and current_context == 'Driving'):
+            return df, "DEFENSIVE MODE", "#ED8796", "Critical: Hypoglycemic or Transit Risk"
+        
+        # Logic Gate 2 (Contextual Resistance)
+        elif bg > 180 or (bg > 140 and current_context in ["High Stress Meeting", "Capital One Strategy Review"]):
+            return df, "CAUTION", "#EED49F", "Elevated: Contextual Resistance or Hyperglycemia"
+        
+        # Logic Gate 3 (Activity Watchlist)
+        elif current_context == "Pinewood Derby prep with Lucas" and bg < 100:
+            return df, "WATCHLIST", "#EED49F", "Activity Risk: Pre-empt with carbs"
+            
+        # Logic Gate 4 (Nominal)
         else:
-            return data, "COMFORT ZONE", "#A6DA95", "Metabolic & Contextual Stability"
-
+            return df, "COMFORT ZONE", "#A6DA95", "Metabolic & Contextual Stability"
+            
     except Exception as e:
-        # In case of error, return safe default or error state
-        return data, "DATA ERROR", "#A5ADCB", f"Error: {str(e)}"
-
-# --- STANDARD MATH FUNCTIONS ---
-def calc_ppo(price):
-    if isinstance(price, pd.DataFrame): price = price.iloc[:, 0]
-    ema12 = price.ewm(span=12, adjust=False).mean()
-    ema26 = price.ewm(span=26, adjust=False).mean()
-    ppo_line = ((ema12 - ema26) / ema26) * 100
-    signal_line = ppo_line.ewm(span=9, adjust=False).mean()
-    hist = ppo_line - signal_line
-    return ppo_line, signal_line, hist
-
-def calc_cone(price):
-    if isinstance(price, pd.DataFrame): price = price.iloc[:, 0]
-    window = 20
-    sma = price.rolling(window=window).mean()
-    std = price.rolling(window=window).std()
-    upper_band = sma + (1.28 * std)
-    lower_band = sma - (1.28 * std)
-    return sma, std, upper_band, lower_band
-
-def generate_forecast(start_date, last_price, last_std, days=30):
-    future_dates = [start_date + timedelta(days=i) for i in range(1, days + 1)]
-    drift = 0.0003
-    i_values = np.arange(1, days + 1)
-    future_mean = last_price * ((1 + drift) ** i_values)
-    time_factor = np.sqrt(i_values)
-    width = (1.28 * last_std) + (last_std * 0.1 * time_factor)
-    future_upper = future_mean + width
-    future_lower = future_mean - width
-    return future_dates, future_mean.tolist(), future_upper.tolist(), future_lower.tolist()
-
-@st.cache_data(ttl=3600)
-def load_strategist_data():
-    try:
-        root_dir = os.path.dirname(os.path.abspath(__file__))
-        root_file = os.path.join(root_dir, "^GSPC.csv")
-        if os.path.exists(root_file):
-            df = pd.read_csv(root_file)
-        else:
-            filename = os.path.join("data", "strategist_forecast.csv")
-            if not os.path.exists(filename): return None
-            df = pd.read_csv(filename)
-        required_cols = ['Date', 'Tstk_Adj', 'FP1', 'FP3', 'FP6']
-        if not all(col in df.columns for col in required_cols): return None
-        df['Date'] = pd.to_datetime(df['Date'])
-        return df
-    except Exception: return None
-
-def get_strategist_update():
-    try:
-        sheet_url = os.environ.get("STRATEGIST_SHEET_URL")
-        if not sheet_url and "STRATEGIST_SHEET_URL" in st.secrets:
-            sheet_url = st.secrets["STRATEGIST_SHEET_URL"]
-        if sheet_url and "INSERT_YOUR" not in sheet_url:
-            return pd.read_csv(sheet_url)
-        local_path = os.path.join("data", "update.csv")
-        if os.path.exists(local_path): return pd.read_csv(local_path)
-        return None
-    except Exception: return None
+        return df, "ERROR", "#ED8796", f"Error: {e}"

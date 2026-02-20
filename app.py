@@ -1,104 +1,85 @@
 import streamlit as st
-import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
 import styles
 import logic
 
-# 1. PAGE SETUP (MUST BE FIRST)
-st.set_page_config(
-    page_title="T1D Contextual Risk | Bio-Telemetry",
-    page_icon="🩸",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# 2. SETUP & THEME
+# 1. PAGE SETUP
+st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", layout="wide")
 theme = styles.apply_theme()
 
-# 3. CONTEXT SELECTION (Sidebar)
+# 2. CONTEXT SIDEBAR
 with st.sidebar:
     st.header("Context Settings")
     current_context = st.selectbox(
-        "Current Activity / Context",
+        "Current Activity",
         ["Nominal", "Driving", "High Stress Meeting", "Capital One Strategy Review", "Pinewood Derby prep with Lucas"],
         index=0
     )
-    st.info(f"Active Context: **{current_context}**")
 
-# 4. DATA LOADING
-full_data = None
-status, color, reason = "SYSTEM BOOT", "#A5ADCB", "Initializing..."
-
+# 3. DATA LOADING
 try:
     with st.spinner("Connecting to Bio-Telemetry..."):
         full_data = logic.fetch_health_data()
-
-    if full_data is not None and not full_data.empty:
-        # Calculate Risk
         _, status, color, reason = logic.calc_glycemic_risk(full_data, current_context)
-        latest_row = full_data.iloc[-1]
-    else:
-        status, color, reason = "DATA ERROR", "#ED8796", "Data Feed Unavailable"
 except Exception as e:
-    status, color, reason = "SYSTEM ERROR", "#ED8796", f"Connection Failed: {e}"
+    st.error(f"System Error: {e}")
+    st.stop()
 
-# 5. HEADER UI
-c_title, c_menu = st.columns([0.90, 0.10], gap="small")
-with c_title:
-    # Use existing shield.png or similar if available, or just text
-    header_html = f"""
-    <div class="header-bar">
-    <div class="header-text-col">
-    <span class="steel-text-main">T1D Contextual Risk</span>
-    <span class="steel-text-sub">Bio-Telemetry Dashboard</span>
-    </div>
-    </div>
-    """
-    st.markdown(header_html, unsafe_allow_html=True)
-
-with c_menu:
-    with st.popover("☰", use_container_width=True):
-        st.caption("Settings")
-        is_dark = st.toggle("Dark Mode", value=st.session_state.get("dark_mode", False))
-        if is_dark != st.session_state.get("dark_mode", False):
-            st.session_state["dark_mode"] = is_dark
-            st.rerun()
-
-# 6. STATUS BAR
+# 4. HEADER UI
 st.markdown(f"""
-<div style="margin-bottom: 20px; margin-top: 5px;">
-    <span style="font-family: 'Inter'; font-weight: 600; font-size: 16px; color: var(--text-secondary);">Real-Time Risk Assessment</span>
-    <div class="gov-pill" style="background: linear-gradient(135deg, {color}, {color}88); border: 1px solid {color};">{status}</div>
-    <div class="premium-pill">LIVE</div>
-</div>
+    <div style="padding-bottom: 20px;">
+        <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">Personal ERM: Contextual Life Hub</span><br>
+        <span style="color: {theme['TEXT_SECONDARY']};">Cognitive Offloading & Risk Governance</span>
+    </div>
+    <div style="margin-bottom: 20px;">
+        <span style="font-weight: 600; color: {theme['TEXT_SECONDARY']};">System Status: </span>
+        <div class="gov-pill" style="background: {color}44; border: 1px solid {color}; color: {theme['TEXT_PRIMARY']};">{status}</div>
+        <div style="margin-top: 5px; font-size: 14px; color: {theme['TEXT_SECONDARY']};">Analysis: {reason}</div>
+    </div>
 """, unsafe_allow_html=True)
-
-if reason:
-    st.caption(f"**Analysis:** {reason}")
-
 st.divider()
 
-# 7. MAIN CONTENT
-if full_data is not None and not full_data.empty:
+# 5. DASHBOARD TABS
+tab1, tab2, tab3 = st.tabs(["Metabolic State", "Logistical Risk", "Agentic Context"])
 
-    col1, col2 = st.columns([2, 1])
+with tab1:
+    latest = full_data.iloc[-1]
+    prev = full_data.iloc[-2]
+    
+    cols = st.columns(4)
+    cols[0].metric("Glucose (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
+    cols[1].metric("Trend Vector", latest['Trend'])
+    cols[2].metric("Active Insulin", "1.5 U", "-0.2 U")
+    cols[3].metric("Next Context", current_context, "Active", delta_color="off")
+    
+    st.markdown("---")
+    
+    # Plotly Chart
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color=theme['ACCENT'], width=3)))
+    fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5) # Green Target Range
+    fig.add_hline(y=70, line_dash="dash", line_color="#ED8796") # Red Hypo Line
+    fig.update_layout(template=theme['CHART_TEMPLATE'], height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL")
+    
+    st.plotly_chart(fig, use_container_width=True)
 
-    with col1:
-        st.subheader("Glucose Trend")
-        # Simple Line Chart
-        st.line_chart(full_data['glucose'])
+with tab2:
+    h1, h2, h3 = st.columns(3)
+    with h1: 
+        st.info("**1 HOUR (Transit Risk)**")
+        st.markdown("🟢 **SAFE**" if current_context != "Driving" else "🔴 **EVALUATE TRANSIT**")
+    with h2: 
+        st.info("**4 HOURS (Meeting Risk)**")
+        st.markdown("🟡 **CAUTION: CORTISOL SPIKE**" if "Strategy" in current_context else "🟢 **NOMINAL**")
+    with h3: 
+        st.info("**24 HOURS (Logistics)**")
+        st.markdown("🟢 **SAFE** - Sensor expires in 3 days.")
 
-    with col2:
-        st.subheader("Current Metrics")
-        current_glucose = latest_row['glucose']
-        trend = latest_row['trend']
-
-        st.metric("Glucose", f"{current_glucose} mg/dL", delta=trend)
-        st.metric("Context", current_context)
-
-else:
-    st.error("Data connection initializing or offline. Please check network.")
+with tab3:
+    st.markdown("### AI Context Synthesis")
+    st.info("Agent Status: Active and monitoring.")
+    user_input = st.chat_input("Log an event, meal, or unstructured thought...")
+    if user_input:
+        st.success(f"Context Captured: {user_input}")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
