@@ -82,7 +82,7 @@ with st.sidebar:
 
 # 4. DATA LOADING
 full_data = None
-status, color, reason = "SYSTEM BOOT", "#888888", "Initializing..."
+status, color, reason = "SYSTEM BOOT", "#A5ADCB", "Initializing..."
 
 try:
     with st.spinner("Connecting to Bio-Telemetry..."):
@@ -93,9 +93,9 @@ try:
         _, status, color, reason = logic.calc_glycemic_risk(full_data, current_context)
         latest_row = full_data.iloc[-1]
     else:
-        status, color, reason = "DATA ERROR", "#ff0000", "Data Feed Unavailable"
+        status, color, reason = "DATA ERROR", "#ED8796", "Data Feed Unavailable"
 except Exception as e:
-    status, color, reason = "SYSTEM ERROR", "#ff0000", f"Connection Failed: {e}"
+    status, color, reason = "SYSTEM ERROR", "#ED8796", f"Connection Failed: {e}"
 
 # 5. HEADER UI
 c_title, c_menu = st.columns([0.90, 0.10], gap="small")
