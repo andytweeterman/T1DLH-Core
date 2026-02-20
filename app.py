@@ -76,6 +76,11 @@ st.divider()
 # 6. MAIN CONTENT GRID
 if full_data is not None and closes is not None:
     
+    # Pre-calculate SPY PPO for use across tabs
+    spy_ppo, spy_sig, spy_hist = None, None, None
+    if 'SPY' in closes:
+        spy_ppo, spy_sig, spy_hist = logic.calc_ppo(closes['SPY'])
+
     tab1, tab2, tab3 = st.tabs(["Markets", "Safety & Stress Tests", "Strategist"])
 
     # --- TAB 1: MARKETS ---
@@ -107,7 +112,7 @@ if full_data is not None and closes is not None:
         if 'SPY' in closes:
             spy = closes['SPY']
             # FIXED: logic.calc_ppo
-            ppo, sig, hist = logic.calc_ppo(spy)
+            ppo, sig, hist = spy_ppo, spy_sig, spy_hist
             # FIXED: logic.calc_cone
             sma, std, u_cone, l_cone = logic.calc_cone(spy)
             # FIXED: logic.generate_forecast
@@ -162,8 +167,8 @@ if full_data is not None and closes is not None:
         st.subheader("⏱️ Tactical Horizons")
         if 'SPY' in closes:
             # FIXED: logic.calc_ppo
-            latest_hist = logic.calc_ppo(closes['SPY'])[2].iloc[-1]
-            latest_ppo = logic.calc_ppo(closes['SPY'])[0].iloc[-1]
+            latest_hist = spy_hist.iloc[-1]
+            latest_ppo = spy_ppo.iloc[-1]
             h1, h2, h3 = st.columns(3)
             with h1: st.info("**1 WEEK (Momentum)**"); st.markdown("🟢 **RISING**" if latest_hist > 0 else "🔴 **WEAKENING**")
             with h2: st.info("**1 MONTH (Trend)**"); st.markdown("🟢 **BULLISH**" if latest_ppo > 0 else "🔴 **BEARISH**")
