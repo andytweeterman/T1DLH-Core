@@ -30,9 +30,12 @@ try:
     if full_data is not None and not full_data.empty:
         closes = full_data['Close']
         gov_df, status, color, reason = logic.calc_governance(full_data)
-        latest_monitor = gov_df.iloc[-1]
+        if not gov_df.empty:
+            latest_monitor = gov_df.iloc[-1]
     else:
         status, color, reason = "DATA ERROR", "#ff0000", "Data Feed Unavailable"
+except KeyError:
+    status, color, reason = "DATA ERROR", "#ff0000", "Missing Data Columns"
 except Exception as e:
     status, color, reason = "SYSTEM ERROR", "#ff0000", "Connection Failed"
 
