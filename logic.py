@@ -8,20 +8,17 @@ import streamlit as st
 @st.cache_data(ttl=3600)
 def fetch_market_data():
     """Fetches data from Yahoo Finance and cleans it immediately."""
-    try:
-        tickers = ["SPY", "^DJI", "^IXIC", "HYG", "IEF", "^VIX", "RSP", "DX-Y.NYB", "GC=F", "CL=F"]
-        start = (datetime.now() - timedelta(days=1825)).strftime('%Y-%m-%d')
-        data = yf.download(tickers, start=start, progress=False)
-        
-        if data is None or data.empty:
-            return None
+    tickers = ["SPY", "^DJI", "^IXIC", "HYG", "IEF", "^VIX", "RSP", "DX-Y.NYB", "GC=F", "CL=F"]
+    start = (datetime.now() - timedelta(days=1825)).strftime('%Y-%m-%d')
+    data = yf.download(tickers, start=start, progress=False)
 
-        # Fix the "Sunday Gap" by carrying forward Friday's data
-        data = data.ffill()
-        
-        return data
-    except Exception:
+    if data is None or data.empty:
         return None
+
+    # Fix the "Sunday Gap" by carrying forward Friday's data
+    data = data.ffill()
+
+    return data
 
 def calc_governance(data):
     """Calculates the 'Traffic Light' safety status with smoothed logic."""
