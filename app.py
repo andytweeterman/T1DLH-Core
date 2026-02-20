@@ -1,5 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
+from openai import OpenAI
 import styles
 import logic
 
@@ -7,7 +8,10 @@ import logic
 st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", layout="wide")
 theme = styles.apply_theme()
 
-# 2. CONTEXT SIDEBAR
+# 2. INITIALIZE LOCAL LLM CLIENT (LM Studio)
+client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
+
+# 3. CONTEXT SIDEBAR
 with st.sidebar:
     st.header("Context Settings")
     current_context = st.selectbox(
@@ -16,16 +20,17 @@ with st.sidebar:
         index=0
     )
 
-# 3. DATA LOADING
+# 4. DATA LOADING
 try:
     with st.spinner("Connecting to Bio-Telemetry..."):
         full_data = logic.fetch_health_data()
         _, status, color, reason = logic.calc_glycemic_risk(full_data, current_context)
+        latest = full_data.iloc[-1]
 except Exception as e:
     st.error(f"System Error: {e}")
     st.stop()
 
-# 4. HEADER UI
+# 5. HEADER UI
 st.markdown(f"""
     <div style="padding-bottom: 20px;">
         <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">Personal ERM: Contextual Life Hub</span><br>
@@ -39,13 +44,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 st.divider()
 
-# 5. DASHBOARD TABS
+# 6. DASHBOARD TABS
 tab1, tab2, tab3 = st.tabs(["Metabolic State", "Logistical Risk", "Agentic Context"])
 
 with tab1:
-    latest = full_data.iloc[-1]
     prev = full_data.iloc[-2]
-    
     cols = st.columns(4)
     cols[0].metric("Glucose (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
     cols[1].metric("Trend Vector", latest['Trend'])
@@ -53,14 +56,11 @@ with tab1:
     cols[3].metric("Next Context", current_context, "Active", delta_color="off")
     
     st.markdown("---")
-    
-    # Plotly Chart
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color=theme['ACCENT'], width=3)))
-    fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5) # Green Target Range
-    fig.add_hline(y=70, line_dash="dash", line_color="#ED8796") # Red Hypo Line
+    fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
+    fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(template=theme['CHART_TEMPLATE'], height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL")
-    
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
@@ -76,10 +76,49 @@ with tab2:
         st.markdown("🟢 **SAFE** - Sensor expires in 3 days.")
 
 with tab3:
-    st.markdown("### AI Context Synthesis")
-    st.info("Agent Status: Active and monitoring.")
-    user_input = st.chat_input("Log an event, meal, or unstructured thought...")
-    if user_input:
-        st.success(f"Context Captured: {user_input}")
+    st.markdown("### Agentic Context Synthesis")
+    
+    # AI Briefing Generation
+    with st.spinner("Synthesizing context with Local LLM..."):
+        try:
+            response = client.chat.completions.create(
+                model="local-model",
+                messages=[
+                    {"role": "system", "content": "You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary."},
+                    {"role": "user", "content": f"Glucose: {latest['Glucose_Value']}, Context: {current_context}"}
+                ],
+                timeout=8
+            )
+            st.success("**AI Risk Briefing:**")
+            st.write(response.choices[0].message.content)
+        except Exception:
+            st.warning("⚠️ LM Studio connection pending. Ensure the local server is running at port 1234.")
+
+    st.divider()
+    
+    # Interactive Chat History
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("Log an event or ask for a risk assessment..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            try:
+                response = client.chat.completions.create(
+                    model="local-model",
+                    messages=[{"role": "system", "content": "You are a T1D Risk Manager."}] + st.session_state.messages
+                )
+                answer = response.choices[0].message.content
+                st.markdown(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+            except Exception:
+                st.error("Connection to local engine lost.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
