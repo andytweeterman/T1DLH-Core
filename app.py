@@ -1,6 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
-from openai import OpenAI
+import google.generativeai as genai
 import styles
 import logic
 import json
@@ -9,8 +9,17 @@ import json
 st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", layout="wide")
 theme = styles.apply_theme()
 
-# 2. INITIALIZE CLOUD LLM CLIENT
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# 2. INITIALIZE GEMINI CLIENT
+# The app securely pulls your API key from Streamlit Cloud's secret vault
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+
+# Initialize the blazing fast 3.0 Flash model
+# We set up two instances: one for standard text, one strictly forced into JSON mode
+model_text = genai.GenerativeModel('gemini-3.0-flash')
+model_json = genai.GenerativeModel(
+    'gemini-3.0-flash', 
+    generation_config={"response_mime_type": "application/json"}
+)
 
 # 3. CONTEXT SIDEBAR
 with st.sidebar:
@@ -80,24 +89,18 @@ with tab3:
     st.markdown("### Agentic Context Synthesis")
     
     # AI Briefing Generation
-    with st.spinner("Synthesizing context with Cloud AI..."):
+    with st.spinner("Synthesizing context with Gemini 3.0 Flash..."):
         try:
-            briefing_res = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary."},
-                    {"role": "user", "content": f"Glucose: {latest['Glucose_Value']}, Context: {current_context}"}
-                ],
-                timeout=8
-            )
+            briefing_prompt = f"You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary.\nCurrent Glucose: {latest['Glucose_Value']}, Current Context: {current_context}"
+            briefing_res = model_text.generate_content(briefing_prompt)
             st.success("**AI Risk Briefing:**")
-            st.write(briefing_res.choices[0].message.content)
-        except Exception:
-            st.warning("⚠️ Cloud AI connection failed. Check API key.")
+            st.write(briefing_res.text)
+        except Exception as e:
+            st.warning(f"⚠️ Cloud AI connection failed. Check API key. Details: {e}")
 
     st.divider()
     
-    # The New Structured Extraction Prompt
+    # The Structured Extraction Prompt for JSON Mode
     extraction_prompt = """
     You are a T1D Risk Manager. The user will provide a messy, unstructured brain dump.
     You MUST respond in strict JSON format containing exactly two keys:
@@ -108,12 +111,10 @@ with tab3:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if message["role"] == "assistant" and "tags" in message:
                 st.markdown(message["content"])
-                # Display the extracted tags as a cool code block underneath the reply
                 st.caption("🔍 **Extracted Telemetry Tags:**")
                 st.json(message["tags"], expanded=False)
             else:
@@ -126,16 +127,12 @@ with tab3:
 
         with st.chat_message("assistant"):
             try:
-                # Ask OpenAI for the JSON package
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    response_format={ "type": "json_object" },
-                    messages=[{"role": "system", "content": extraction_prompt}, {"role": "user", "content": prompt}]
-                )
+                # Combine instructions and user input for the JSON extraction
+                full_prompt = f"{extraction_prompt}\n\nUser Input: {prompt}"
+                response = model_json.generate_content(full_prompt)
                 
-                # Parse the JSON response
-                raw_json = response.choices[0].message.content
-                parsed_data = json.loads(raw_json)
+                # Parse the native JSON response from Gemini
+                parsed_data = json.loads(response.text)
                 
                 reply_text = parsed_data.get("reply", "Context logged.")
                 extracted_tags = parsed_data.get("tags", {})
