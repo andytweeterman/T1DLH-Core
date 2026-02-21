@@ -1,6 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
-from openai import OpenAI
+import google.generativeai as genai
 import styles
 import logic
 
@@ -8,9 +8,12 @@ import logic
 st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", layout="wide")
 theme = styles.apply_theme()
 
-# 2. INITIALIZE CLOUD LLM CLIENT
-# The app will securely pull your API key from Streamlit Cloud's secret vault
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# 2. INITIALIZE CLOUD LLM CLIENT (GEMINI)
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+model = genai.GenerativeModel(
+    'gemini-1.5-flash', 
+    system_instruction="You are an expert T1D Risk Manager. Be concise, direct, and focus on actionable mitigation."
+)
 
 # 3. CONTEXT SIDEBAR
 with st.sidebar:
@@ -80,45 +83,36 @@ with tab3:
     st.markdown("### Agentic Context Synthesis")
     
     # AI Briefing Generation
-    with st.spinner("Synthesizing context with Cloud AI..."):
+    with st.spinner("Synthesizing context with Gemini..."):
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary."},
-                    {"role": "user", "content": f"Glucose: {latest['Glucose_Value']}, Context: {current_context}"}
-                ],
-                timeout=8
-            )
+            prompt = f"Analyze this data and give a 2-sentence risk summary.\nGlucose: {latest['Glucose_Value']}\nContext: {current_context}"
+            response = model.generate_content(prompt)
             st.success("**AI Risk Briefing:**")
-            st.write(response.choices[0].message.content)
+            st.write(response.text)
         except Exception as e:
-            st.warning("⚠️ Cloud AI connection failed. Please ensure your API key is correctly set in Streamlit Secrets.")
+            st.warning("⚠️ Cloud AI connection failed. Please ensure your GEMINI_API_KEY is correctly set in Streamlit Secrets.")
 
     st.divider()
     
-    # Interactive Chat History
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    # Initialize Gemini Chat Session
+    if "chat_session" not in st.session_state:
+        st.session_state.chat_session = model.start_chat(history=[])
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    # Display History
+    for message in st.session_state.chat_session.history:
+        role = "assistant" if message.role == "model" else "user"
+        with st.chat_message(role):
+            st.markdown(message.parts[0].text)
 
+    # Input Capture
     if prompt := st.chat_input("Log an event or ask for a risk assessment..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
             try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "system", "content": "You are a T1D Risk Manager."}] + st.session_state.messages
-                )
-                answer = response.choices[0].message.content
-                st.markdown(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer})
+                response = st.session_state.chat_session.send_message(prompt)
+                st.markdown(response.text)
             except Exception as e:
                 st.error("Connection to Cloud Engine lost.")
 
