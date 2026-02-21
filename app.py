@@ -9,11 +9,21 @@ st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", l
 theme = styles.apply_theme()
 
 # 2. INITIALIZE CLOUD LLM CLIENT (GEMINI)
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel(
-    'gemini-1.5-flash', 
-    system_instruction="You are an expert T1D Risk Manager. Be concise, direct, and focus on actionable mitigation."
-)
+# Initialize cloud LLM client (GEMINI) if API key is present; otherwise run without AI features
+api_key = st.secrets.get("GEMINI_API_KEY")
+model = None
+if api_key:
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            'gemini-1.5-flash', 
+            system_instruction="You are an expert T1D Risk Manager. Be concise, direct, and focus on actionable mitigation."
+        )
+    except Exception:
+        st.warning("Cloud AI initialization failed; continuing without AI features.")
+        model = None
+else:
+    st.info("GEMINI_API_KEY not set; running without cloud AI features.")
 
 # 3. CONTEXT SIDEBAR
 with st.sidebar:
@@ -84,36 +94,48 @@ with tab3:
     
     # AI Briefing Generation
     with st.spinner("Synthesizing context with Gemini..."):
-        try:
-            prompt = f"Analyze this data and give a 2-sentence risk summary.\nGlucose: {latest['Glucose_Value']}\nContext: {current_context}"
-            response = model.generate_content(prompt)
-            st.success("**AI Risk Briefing:**")
-            st.write(response.text)
-        except Exception as e:
-            st.warning("⚠️ Cloud AI connection failed. Please ensure your GEMINI_API_KEY is correctly set in Streamlit Secrets.")
+        prompt = f"Analyze this data and give a 2-sentence risk summary.\nGlucose: {latest['Glucose_Value']}\nContext: {current_context}"
+        if model:
+            try:
+                response = model.generate_content(prompt)
+                st.success("**AI Risk Briefing:**")
+                st.write(getattr(response, 'text', str(response)))
+            except Exception:
+                st.warning("⚠️ Cloud AI connection failed. Please ensure your GEMINI_API_KEY is correctly set in Streamlit Secrets.")
+        else:
+            st.info("AI disabled; showing deterministic summary.")
+            st.write(f"Glucose {latest['Glucose_Value']} — Context: {current_context} — Status: {status} — {reason}")
 
     st.divider()
     
-    # Initialize Gemini Chat Session
-    if "chat_session" not in st.session_state:
-        st.session_state.chat_session = model.start_chat(history=[])
-
-    # Display History
-    for message in st.session_state.chat_session.history:
-        role = "assistant" if message.role == "model" else "user"
-        with st.chat_message(role):
-            st.markdown(message.parts[0].text)
-
-    # Input Capture
-    if prompt := st.chat_input("Log an event or ask for a risk assessment..."):
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
+    # Initialize Gemini Chat Session (only if model available)
+    if model:
+        if "chat_session" not in st.session_state:
             try:
-                response = st.session_state.chat_session.send_message(prompt)
-                st.markdown(response.text)
-            except Exception as e:
-                st.error("Connection to Cloud Engine lost.")
+                st.session_state.chat_session = model.start_chat(history=[])
+            except Exception:
+                st.warning("Unable to start cloud chat session.")
+                st.session_state.chat_session = None
+
+        if st.session_state.get("chat_session"):
+            # Display History
+            for message in st.session_state.chat_session.history:
+                role = "assistant" if message.role == "model" else "user"
+                with st.chat_message(role):
+                    st.markdown(message.parts[0].text)
+
+            # Input Capture
+            if prompt := st.chat_input("Log an event or ask for a risk assessment..."):
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                with st.chat_message("assistant"):
+                    try:
+                        response = st.session_state.chat_session.send_message(prompt)
+                        st.markdown(getattr(response, 'text', str(response)))
+                    except Exception:
+                        st.error("Connection to Cloud Engine lost.")
+    else:
+        st.info("Cloud chat disabled. Set GEMINI_API_KEY to enable interactive chat.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
