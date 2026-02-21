@@ -16,9 +16,9 @@ if api_key:
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            'gemini-1.5-flash', 
-            system_instruction="You are an expert T1D Risk Manager. Be concise, direct, and focus on actionable mitigation."
-        )
+            'gemini-3-flash-preview', 
+    system_instruction="You are an expert T1D Risk Manager. Be concise, direct, and focus on actionable mitigation."
+)
     except Exception:
         st.warning("Cloud AI initialization failed; continuing without AI features.")
         model = None
