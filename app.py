@@ -100,8 +100,9 @@ with tab3:
                 response = model.generate_content(prompt)
                 st.success("**AI Risk Briefing:**")
                 st.write(getattr(response, 'text', str(response)))
-            except Exception:
-                st.warning("⚠️ Cloud AI connection failed. Please ensure your GEMINI_API_KEY is correctly set in Streamlit Secrets.")
+            except Exception as e:
+            st.error(f"Google API Error: {e}")
+            st.warning("⚠️ Cloud AI connection failed. Please ensure your GEMINI_API_KEY is correctly set in Streamlit Secrets.")
         else:
             st.info("AI disabled; showing deterministic summary.")
             st.write(f"Glucose {latest['Glucose_Value']} — Context: {current_context} — Status: {status} — {reason}")
