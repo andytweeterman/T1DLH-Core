@@ -6,7 +6,7 @@ import logic
 import json
 
 # 1. PAGE SETUP
-st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", layout="wide")
+st.set_page_config(page_title="TLDH | Contextual Life Hub", page_icon="🩸", layout="wide")
 theme = styles.apply_theme()
 
 # 2. INITIALIZE GEMINI CLIENT
@@ -43,7 +43,7 @@ except Exception as e:
 # 5. HEADER UI
 st.markdown(f"""
     <div style="padding-bottom: 20px;">
-        <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">Personal ERM: Contextual Life Hub</span><br>
+        <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">Personal ERM: TLDH Hub</span><br>
         <span style="color: {theme['TEXT_SECONDARY']};">Cognitive Offloading & Risk Governance</span>
     </div>
     <div style="margin-bottom: 20px;">
@@ -88,15 +88,16 @@ with tab2:
 with tab3:
     st.markdown("### Agentic Context Synthesis")
     
-    # AI Briefing Generation
-    with st.spinner("Synthesizing context with Gemini 3.0 Flash..."):
-        try:
-            briefing_prompt = f"You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary.\nCurrent Glucose: {latest['Glucose_Value']}, Current Context: {current_context}"
-            briefing_res = model_text.generate_content(briefing_prompt)
-            st.success("**AI Risk Briefing:**")
-            st.write(briefing_res.text)
-        except Exception as e:
-            st.warning(f"⚠️ Cloud AI connection failed. Check API key. Details: {e}")
+    # MANUAL TRIGGER TO SAVE API QUOTA
+    if st.button("Generate Live Risk Briefing", type="primary"):
+        with st.spinner("Synthesizing context with Gemini 3.0 Flash..."):
+            try:
+                briefing_prompt = f"You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary.\nCurrent Glucose: {latest['Glucose_Value']}, Current Context: {current_context}"
+                briefing_res = model_text.generate_content(briefing_prompt)
+                st.success("**AI Risk Briefing:**")
+                st.write(briefing_res.text)
+            except Exception as e:
+                st.warning(f"⚠️ Cloud AI connection failed. Check API key or Quota limit. Details: {e}")
 
     st.divider()
     
