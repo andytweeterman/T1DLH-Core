@@ -1,29 +1,16 @@
 import streamlit as st
 import plotly.graph_objects as go
-import google.generativeai as genai
+from openai import OpenAI
 import styles
 import logic
+import json
 
 # 1. PAGE SETUP
 st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", layout="wide")
 theme = styles.apply_theme()
 
-# 2. INITIALIZE CLOUD LLM CLIENT (GEMINI)
-# Initialize cloud LLM client (GEMINI) if API key is present; otherwise run without AI features
-api_key = st.secrets.get("GEMINI_API_KEY")
-model = None
-if api_key:
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            'gemini-3-flash-preview', 
-    system_instruction="You are an expert T1D Risk Manager. Be concise, direct, and focus on actionable mitigation."
-)
-    except Exception:
-        st.warning("Cloud AI initialization failed; continuing without AI features.")
-        model = None
-else:
-    st.info("GEMINI_API_KEY not set; running without cloud AI features.")
+# 2. INITIALIZE CLOUD LLM CLIENT
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # 3. CONTEXT SIDEBAR
 with st.sidebar:
@@ -93,38 +80,81 @@ with tab3:
     st.markdown("### Agentic Context Synthesis")
     
     # AI Briefing Generation
-    with st.spinner("Synthesizing context with Gemini..."):
+    with st.spinner("Synthesizing context with Cloud AI..."):
         try:
-            prompt = f"Analyze this data and give a 2-sentence risk summary.\nGlucose: {latest['Glucose_Value']}\nContext: {current_context}"
-            response = model.generate_content(prompt)
+            briefing_res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary."},
+                    {"role": "user", "content": f"Glucose: {latest['Glucose_Value']}, Context: {current_context}"}
+                ],
+                timeout=8
+            )
             st.success("**AI Risk Briefing:**")
-            st.write(response.text)
-        except Exception as e:
-            st.error(f"Google API Error: {e}")
-            st.warning("⚠️ Cloud AI connection failed. Please ensure your GEMINI_API_KEY is correctly set in Streamlit Secrets.")
+            st.write(briefing_res.choices[0].message.content)
+        except Exception:
+            st.warning("⚠️ Cloud AI connection failed. Check API key.")
 
     st.divider()
     
-    # Initialize Gemini Chat Session
-    if "chat_session" not in st.session_state:
-        st.session_state.chat_session = model.start_chat(history=[])
+    # The New Structured Extraction Prompt
+    extraction_prompt = """
+    You are a T1D Risk Manager. The user will provide a messy, unstructured brain dump.
+    You MUST respond in strict JSON format containing exactly two keys:
+    1. "reply": A short, empathetic, helpful response to the user.
+    2. "tags": A nested JSON object extracting the following keys: "event_type" (e.g. meal, stress, hardware), "estimated_carbs" (integer or null), "physiological_state" (e.g. high_stress, nominal), and "hardware_alert" (string or null).
+    """
 
-    # Display History
-    for message in st.session_state.chat_session.history:
-        role = "assistant" if message.role == "model" else "user"
-        with st.chat_message(role):
-            st.markdown(message.parts[0].text)
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    # Input Capture
-    if prompt := st.chat_input("Log an event or ask for a risk assessment..."):
+    # Display history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if message["role"] == "assistant" and "tags" in message:
+                st.markdown(message["content"])
+                # Display the extracted tags as a cool code block underneath the reply
+                st.caption("🔍 **Extracted Telemetry Tags:**")
+                st.json(message["tags"], expanded=False)
+            else:
+                st.markdown(message["content"])
+
+    if prompt := st.chat_input("Log an event (e.g., 'Pump site itching, ate handful of pretzels, stressed about meeting')"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
             try:
-                response = st.session_state.chat_session.send_message(prompt)
-                st.markdown(response.text)
+                # Ask OpenAI for the JSON package
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    response_format={ "type": "json_object" },
+                    messages=[{"role": "system", "content": extraction_prompt}, {"role": "user", "content": prompt}]
+                )
+                
+                # Parse the JSON response
+                raw_json = response.choices[0].message.content
+                parsed_data = json.loads(raw_json)
+                
+                reply_text = parsed_data.get("reply", "Context logged.")
+                extracted_tags = parsed_data.get("tags", {})
+                
+                # Display the conversational reply
+                st.markdown(reply_text)
+                
+                # Display the invisible data tags
+                st.caption("🔍 **Extracted Telemetry Tags:**")
+                st.json(extracted_tags, expanded=False)
+                
+                # Save both to history so they persist on reload
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": reply_text,
+                    "tags": extracted_tags
+                })
+                
             except Exception as e:
-                st.error(f"Chat Error: {e}")
+                st.error(f"Extraction failed: {e}")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
