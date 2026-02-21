@@ -8,8 +8,9 @@ import logic
 st.set_page_config(page_title="T1DLH | Contextual Life Hub", page_icon="🩸", layout="wide")
 theme = styles.apply_theme()
 
-# 2. INITIALIZE LOCAL LLM CLIENT (LM Studio)
-client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
+# 2. INITIALIZE CLOUD LLM CLIENT
+# The app will securely pull your API key from Streamlit Cloud's secret vault
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # 3. CONTEXT SIDEBAR
 with st.sidebar:
@@ -79,10 +80,10 @@ with tab3:
     st.markdown("### Agentic Context Synthesis")
     
     # AI Briefing Generation
-    with st.spinner("Synthesizing context with Local LLM..."):
+    with st.spinner("Synthesizing context with Cloud AI..."):
         try:
             response = client.chat.completions.create(
-                model="local-model",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are a T1D Risk Manager. Analyze the data and give a 2-sentence risk summary."},
                     {"role": "user", "content": f"Glucose: {latest['Glucose_Value']}, Context: {current_context}"}
@@ -91,8 +92,8 @@ with tab3:
             )
             st.success("**AI Risk Briefing:**")
             st.write(response.choices[0].message.content)
-        except Exception:
-            st.warning("⚠️ LM Studio connection pending. Ensure the local server is running at port 1234.")
+        except Exception as e:
+            st.warning("⚠️ Cloud AI connection failed. Please ensure your API key is correctly set in Streamlit Secrets.")
 
     st.divider()
     
@@ -112,13 +113,13 @@ with tab3:
         with st.chat_message("assistant"):
             try:
                 response = client.chat.completions.create(
-                    model="local-model",
+                    model="gpt-4o-mini",
                     messages=[{"role": "system", "content": "You are a T1D Risk Manager."}] + st.session_state.messages
                 )
                 answer = response.choices[0].message.content
                 st.markdown(answer)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
-            except Exception:
-                st.error("Connection to local engine lost.")
+            except Exception as e:
+                st.error("Connection to Cloud Engine lost.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
