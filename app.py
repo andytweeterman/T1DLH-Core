@@ -42,14 +42,16 @@ except Exception as e:
 
 # 5. HEADER UI
 st.markdown(f"""
-    <div style="padding-bottom: 20px;">
-        <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">Personal ERM: TLDH Hub</span><br>
-        <span style="color: {theme['TEXT_SECONDARY']};">Cognitive Offloading & Risk Governance</span>
-    </div>
-    <div style="margin-bottom: 20px;">
-        <span style="font-weight: 600; color: {theme['TEXT_SECONDARY']};">System Status: </span>
-        <div class="gov-pill" style="background: {color}44; border: 1px solid {color}; color: {theme['TEXT_PRIMARY']};">{status}</div>
-        <div style="margin-top: 5px; font-size: 14px; color: {theme['TEXT_SECONDARY']};">Analysis: {reason}</div>
+    <div class="header-container">
+        <div style="padding-bottom: 20px;">
+            <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">Personal ERM: TLDH Hub</span><br>
+            <span style="color: {theme['TEXT_SECONDARY']};">Cognitive Offloading & Risk Governance</span>
+        </div>
+        <div>
+            <span style="font-weight: 600; color: {theme['TEXT_SECONDARY']};">System Status: </span>
+            <div class="gov-pill" style="background: {color}44; border: 1px solid {color}; color: {theme['TEXT_PRIMARY']};">{status}</div>
+            <div style="margin-top: 5px; font-size: 14px; color: {theme['TEXT_SECONDARY']};">Analysis: {reason}</div>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 st.divider()
