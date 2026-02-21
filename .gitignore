@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+verify_ui.py
+iphone_screenshot.png
+ipad_screenshot.png
