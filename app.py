@@ -15,9 +15,9 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # Initialize the blazing fast 3.0 Flash model
 # We set up two instances: one for standard text, one strictly forced into JSON mode
-model_text = genai.GenerativeModel('gemini-3.0-flash')
+model_text = genai.GenerativeModel('gemini-3-flash-preview')
 model_json = genai.GenerativeModel(
-    'gemini-3.0-flash', 
+    'gemini-3-flash-preview', 
     generation_config={"response_mime_type": "application/json"}
 )
 
