@@ -2,7 +2,7 @@ import streamlit as st
 
 def apply_theme():
     if "dark_mode" not in st.session_state:
-        st.session_state["dark_mode"] = True 
+        st.session_state["dark_mode"] = False
 
     # Catppuccin Macchiato Color Palette
     if st.session_state["dark_mode"]:
@@ -17,16 +17,16 @@ def apply_theme():
             "BORDER": "#494D64"           
         }
     else:
-        # Light Mode Fallback
+        # High Contrast / Light Mode
         theme = {
-            "BG_COLOR": "#eff1f5",
-            "CARD_BG": "#e6e9ef",
-            "TEXT_PRIMARY": "#4c4f69",
-            "TEXT_SECONDARY": "#5c5f77",
+            "BG_COLOR": "#FFFFFF",
+            "CARD_BG": "#F0F2F6",
+            "TEXT_PRIMARY": "#000000",
+            "TEXT_SECONDARY": "#333333",
             "CHART_TEMPLATE": "plotly_white",
-            "CHART_FONT": "#4c4f69",
-            "ACCENT": "#1e66f5",
-            "BORDER": "#ccd0da"
+            "CHART_FONT": "#000000",
+            "ACCENT": "#0055AA",
+            "BORDER": "#000000"
         }
 
     # The "Glow Up" CSS Injection
@@ -212,7 +212,7 @@ def apply_theme():
     return theme
 
 FOOTER_HTML = """
-<div style="text-align: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #494D64; color: #A5ADCB; font-size: 13px; font-family: 'Inter', sans-serif; letter-spacing: 1.5px;">
+<div style="text-align: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #CCCCCC; color: #333333; font-size: 13px; font-family: 'Inter', sans-serif; letter-spacing: 1.5px;">
     T1DLH • CONTEXTUAL LIFE HUB • EXPERIMENTAL COGNITIVE OFFLOADING
 </div>
 """
