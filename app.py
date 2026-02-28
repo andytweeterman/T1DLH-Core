@@ -4,6 +4,7 @@ import google.generativeai as genai
 import styles
 import logic
 import json
+import logging
 
 # 1. PAGE SETUP
 st.set_page_config(page_title="TLDH | Contextual Life Hub", page_icon="🩸", layout="wide")
@@ -34,7 +35,8 @@ try:
         _, status, color, reason = logic.calc_glycemic_risk(full_data, current_context)
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"System Error: {e}")
+    logging.error("System Error: %s", e)
+    st.error("An unexpected system error occurred. Please try again later.")
     st.stop()
 
 # 5. HEADER UI
@@ -115,7 +117,8 @@ elif st.session_state.active_view == "Agent":
                 st.success("**AI Risk Briefing:**")
                 st.write(briefing_res.text)
             except Exception as e:
-                st.warning(f"⚠️ Cloud AI connection failed. Check API key or Quota limit. Details: {e}")
+                logging.error("Cloud AI connection failed: %s", e)
+                st.warning("⚠️ Cloud AI connection failed. Check API key or Quota limit.")
 
     st.divider()
     
@@ -164,6 +167,7 @@ elif st.session_state.active_view == "Agent":
                 })
                 
             except Exception as e:
-                st.error(f"Extraction failed: {e}")
+                logging.error("Extraction failed: %s", e)
+                st.error("Extraction failed. Please try again.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)

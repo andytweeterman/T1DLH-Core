@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import logging
 from datetime import datetime, timedelta
 
 def fetch_health_data():
@@ -44,4 +45,5 @@ def calc_glycemic_risk(df, current_context="Nominal"):
             return df, "COMFORT ZONE", "#A6DA95", "Metabolic & Contextual Stability"
             
     except Exception as e:
-        return df, "ERROR", "#ED8796", f"Error: {e}"
+        logging.error("Error in calc_glycemic_risk: %s", e)
+        return df, "ERROR", "#ED8796", "An error occurred during risk calculation."
