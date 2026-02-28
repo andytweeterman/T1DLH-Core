@@ -12,10 +12,18 @@ theme = styles.apply_theme()
 # 2. INITIALIZE GEMINI CLIENT
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
+extraction_prompt = """
+You are a T1D Risk Manager. The user will provide a messy, unstructured brain dump.
+You MUST respond in strict JSON format containing exactly two keys:
+1. "reply": A short, empathetic, helpful response to the user.
+2. "tags": A nested JSON object extracting the following keys: "event_type" (e.g. meal, stress, hardware), "estimated_carbs" (integer or null), "physiological_state" (e.g. high_stress, nominal), and "hardware_alert" (string or null).
+"""
+
 model_text = genai.GenerativeModel('gemini-3-flash-preview')
 model_json = genai.GenerativeModel(
     'gemini-3-flash-preview', 
-    generation_config={"response_mime_type": "application/json"}
+    generation_config={"response_mime_type": "application/json"},
+    system_instruction=extraction_prompt
 )
 
 # 3. CONTEXT SIDEBAR
@@ -119,13 +127,6 @@ elif st.session_state.active_view == "Agent":
 
     st.divider()
     
-    extraction_prompt = """
-    You are a T1D Risk Manager. The user will provide a messy, unstructured brain dump.
-    You MUST respond in strict JSON format containing exactly two keys:
-    1. "reply": A short, empathetic, helpful response to the user.
-    2. "tags": A nested JSON object extracting the following keys: "event_type" (e.g. meal, stress, hardware), "estimated_carbs" (integer or null), "physiological_state" (e.g. high_stress, nominal), and "hardware_alert" (string or null).
-    """
-
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -145,8 +146,7 @@ elif st.session_state.active_view == "Agent":
 
         with st.chat_message("assistant"):
             try:
-                full_prompt = f"{extraction_prompt}\n\nUser Input: {prompt}"
-                response = model_json.generate_content(full_prompt)
+                response = model_json.generate_content(prompt)
                 
                 parsed_data = json.loads(response.text)
                 
