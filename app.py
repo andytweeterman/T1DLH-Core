@@ -1,3 +1,4 @@
+import html
 import streamlit as st
 import plotly.graph_objects as go
 import google.generativeai as genai
@@ -14,7 +15,7 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 model_text = genai.GenerativeModel('gemini-3-flash-preview')
 model_json = genai.GenerativeModel(
-    'gemini-3-flash-preview', 
+    'gemini-3-flash-preview',
     generation_config={"response_mime_type": "application/json"}
 )
 
@@ -38,6 +39,8 @@ except Exception as e:
     st.stop()
 
 # 5. HEADER UI
+safe_status = html.escape(str(status))
+safe_reason = html.escape(str(reason))
 st.markdown(f"""
     <div style="padding-bottom: 20px;">
         <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">Personal ERM: TLDH Hub</span><br>
@@ -45,8 +48,8 @@ st.markdown(f"""
     </div>
     <div style="margin-bottom: 20px;">
         <span style="font-weight: 600; color: {theme['TEXT_SECONDARY']};">System Status: </span>
-        <div class="gov-pill" style="background: {color}44; border: 1px solid {color}; color: {theme['TEXT_PRIMARY']};">{status}</div>
-        <div style="margin-top: 5px; font-size: 14px; color: {theme['TEXT_SECONDARY']};">Analysis: {reason}</div>
+        <div class="gov-pill" style="background: {color}44; border: 1px solid {color}; color: {theme['TEXT_PRIMARY']};">{safe_status}</div>
+        <div style="margin-top: 5px; font-size: 14px; color: {theme['TEXT_SECONDARY']};">Analysis: {safe_reason}</div>
     </div>
 """, unsafe_allow_html=True)
 st.divider()
@@ -61,12 +64,12 @@ with col1:
     if st.button("Metabolic", use_container_width=True, type="primary" if st.session_state.active_view == "Metabolic" else "secondary"):
         st.session_state.active_view = "Metabolic"
         st.rerun()
-        
+
 with col2:
     if st.button("Logistics", use_container_width=True, type="primary" if st.session_state.active_view == "Logistics" else "secondary"):
         st.session_state.active_view = "Logistics"
         st.rerun()
-        
+
 with col3:
     if st.button("Agent", use_container_width=True, type="primary" if st.session_state.active_view == "Agent" else "secondary"):
         st.session_state.active_view = "Agent"
@@ -82,7 +85,7 @@ if st.session_state.active_view == "Metabolic":
     cols[1].metric("Trend Vector", latest['Trend'])
     cols[2].metric("Active Insulin", "1.5 U", "-0.2 U")
     cols[3].metric("Next Context", current_context, "Active", delta_color="off")
-    
+
     st.markdown("---")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color=theme['ACCENT'], width=3)))
@@ -93,19 +96,19 @@ if st.session_state.active_view == "Metabolic":
 
 elif st.session_state.active_view == "Logistics":
     h1, h2, h3 = st.columns(3)
-    with h1: 
+    with h1:
         st.info("**1 HOUR (Transit Risk)**")
         st.markdown("🟢 **SAFE**" if current_context != "Driving" else "🔴 **EVALUATE TRANSIT**")
-    with h2: 
+    with h2:
         st.info("**4 HOURS (Meeting Risk)**")
         st.markdown("🟡 **CAUTION: CORTISOL SPIKE**" if "Strategy" in current_context else "🟢 **NOMINAL**")
-    with h3: 
+    with h3:
         st.info("**24 HOURS (Logistics)**")
         st.markdown("🟢 **SAFE** - Sensor expires in 3 days.")
 
 elif st.session_state.active_view == "Agent":
     st.markdown("### Agentic Context Synthesis")
-    
+
     # MANUAL TRIGGER TO SAVE API QUOTA
     if st.button("Generate Live Risk Briefing", type="primary"):
         with st.spinner("Synthesizing context with Gemini 3.0 Flash..."):
@@ -118,7 +121,7 @@ elif st.session_state.active_view == "Agent":
                 st.warning(f"⚠️ Cloud AI connection failed. Check API key or Quota limit. Details: {e}")
 
     st.divider()
-    
+
     extraction_prompt = """
     You are a T1D Risk Manager. The user will provide a messy, unstructured brain dump.
     You MUST respond in strict JSON format containing exactly two keys:
@@ -147,22 +150,22 @@ elif st.session_state.active_view == "Agent":
             try:
                 full_prompt = f"{extraction_prompt}\n\nUser Input: {prompt}"
                 response = model_json.generate_content(full_prompt)
-                
+
                 parsed_data = json.loads(response.text)
-                
+
                 reply_text = parsed_data.get("reply", "Context logged.")
                 extracted_tags = parsed_data.get("tags", {})
-                
+
                 st.markdown(reply_text)
                 st.caption("🔍 **Extracted Telemetry Tags:**")
                 st.json(extracted_tags, expanded=False)
-                
+
                 st.session_state.messages.append({
-                    "role": "assistant", 
+                    "role": "assistant",
                     "content": reply_text,
                     "tags": extracted_tags
                 })
-                
+
             except Exception as e:
                 st.error(f"Extraction failed: {e}")
 
