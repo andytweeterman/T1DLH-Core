@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from mock_data import get_mock_cgm
+from logic import fetch_health_data
 
 def test_get_mock_cgm_shape_and_columns():
-    df = get_mock_cgm()
+    df = fetch_health_data()
 
     assert isinstance(df, pd.DataFrame)
 
@@ -18,7 +18,7 @@ def test_get_mock_cgm_shape_and_columns():
     assert list(df.columns) == expected_columns
 
 def test_get_mock_cgm_timestamps():
-    df = get_mock_cgm()
+    df = fetch_health_data()
 
     # Check timestamps are in chronological order
     assert df['Timestamp'].is_monotonic_increasing
@@ -35,7 +35,7 @@ def test_get_mock_cgm_timestamps():
     assert abs((now - last_timestamp).total_seconds()) < 60
 
 def test_get_mock_cgm_glucose_values():
-    df = get_mock_cgm()
+    df = fetch_health_data()
 
     # Check all values are within the clamped boundaries
     assert df['Glucose_Value'].min() >= 70
@@ -45,34 +45,25 @@ def test_get_mock_cgm_glucose_values():
     assert pd.api.types.is_numeric_dtype(df['Glucose_Value'])
 
 def test_get_mock_cgm_trends():
-    df = get_mock_cgm()
+    df = fetch_health_data()
 
     # Reconstruct the difference to test the trend assignment logic
     diffs = df['Glucose_Value'].diff().fillna(0)
 
     for i, change in enumerate(diffs):
-        expected_trend = ''
-        if change > 15:
-            expected_trend = 'DoubleUp'
-        elif 10 < change <= 15:
-            expected_trend = 'SingleUp'
-        elif 5 < change <= 10:
-            expected_trend = 'FortyFiveUp'
-        elif -5 <= change <= 5:
-            expected_trend = 'Flat'
-        elif -10 <= change < -5:
-            expected_trend = 'FortyFiveDown'
-        elif -15 <= change < -10:
-            expected_trend = 'SingleDown'
-        else: # change < -15
-            expected_trend = 'DoubleDown'
+        if change > 3:
+            expected_trend = 'Rising'
+        elif change < -3:
+            expected_trend = 'Falling'
+        else:
+            expected_trend = 'Steady'
 
         assert df['Trend'].iloc[i] == expected_trend
 
 def test_get_mock_cgm_deterministic():
     # Because there's a lot of randomness, let's just make sure multiple calls return different data
-    df1 = get_mock_cgm()
-    df2 = get_mock_cgm()
+    df1 = fetch_health_data()
+    df2 = fetch_health_data()
 
     # It's extremely unlikely these would be exactly the same
     assert not df1['Glucose_Value'].equals(df2['Glucose_Value'])
