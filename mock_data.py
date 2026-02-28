@@ -17,27 +17,29 @@ def get_mock_cgm():
     timestamps.reverse()
 
     # Generate random walk for glucose values with momentum
-    glucose_values = []
+    glucose_values = np.zeros(num_points, dtype=int)
     # Start with a random value within a reasonable range (e.g., 90-150)
-    current_value = np.random.randint(90, 150)
-    glucose_values.append(current_value)
+    glucose_values[0] = np.random.randint(90, 150)
 
     # Momentum factor to create smooth curves
     current_trend_val = 0
+    current_value = glucose_values[0]
 
-    for _ in range(num_points - 1):
+    # Pre-generate random values to avoid calling randint in the loop
+    trend_deltas = np.random.randint(-2, 3, size=num_points - 1)
+    noises = np.random.randint(-2, 3, size=num_points - 1)
+
+    for i in range(num_points - 1):
         # Update trend value slightly to simulate changing metabolic conditions
         # Bias the trend update to keep it somewhat stable but changing
-        trend_delta = np.random.randint(-2, 3) # -2 to 2
-        current_trend_val += trend_delta
+        current_trend_val += trend_deltas[i]
 
         # Dampen the trend if it gets too high to avoid runaway values
         if abs(current_trend_val) > 8:
             current_trend_val = int(current_trend_val * 0.8)
 
         # Add some noise
-        noise = np.random.randint(-2, 3)
-        change = current_trend_val + noise
+        change = current_trend_val + noises[i]
 
         current_value += change
 
@@ -49,7 +51,7 @@ def get_mock_cgm():
             current_value = 220
             current_trend_val = -(abs(current_trend_val) // 2 + 1) # Bounce down
 
-        glucose_values.append(current_value)
+        glucose_values[i + 1] = current_value
 
     # Create DataFrame
     df = pd.DataFrame({
@@ -59,28 +61,27 @@ def get_mock_cgm():
 
     # Generate Trend column based on rate of change
     # Calculate difference
-    df['diff'] = df['Glucose_Value'].diff().fillna(0)
+    diff = df['Glucose_Value'].diff().fillna(0)
 
-    def get_trend(change):
-        if change > 15:
-            return 'DoubleUp'
-        elif 10 < change <= 15:
-            return 'SingleUp'
-        elif 5 < change <= 10:
-            return 'FortyFiveUp'
-        elif -5 <= change <= 5:
-            return 'Flat'
-        elif -10 <= change < -5:
-            return 'FortyFiveDown'
-        elif -15 <= change < -10:
-            return 'SingleDown'
-        else: # change < -15
-            return 'DoubleDown'
+    conditions = [
+        diff > 15,
+        (diff > 10) & (diff <= 15),
+        (diff > 5) & (diff <= 10),
+        (diff >= -5) & (diff <= 5),
+        (diff >= -10) & (diff < -5),
+        (diff >= -15) & (diff < -10)
+    ]
 
-    df['Trend'] = df['diff'].apply(get_trend)
+    choices = [
+        'DoubleUp',
+        'SingleUp',
+        'FortyFiveUp',
+        'Flat',
+        'FortyFiveDown',
+        'SingleDown'
+    ]
 
-    # Drop the diff column as it's not requested in the final output
-    df = df.drop(columns=['diff'])
+    df['Trend'] = np.select(conditions, choices, default='DoubleDown')
 
     return df
 
