@@ -55,22 +55,14 @@ st.divider()
 if "active_view" not in st.session_state:
     st.session_state.active_view = "Metabolic"
 
-col1, col2, col3 = st.columns(3)
+views = ["Metabolic", "Logistics", "Agent"]
+cols = st.columns(len(views))
 
-with col1:
-    if st.button("Metabolic", use_container_width=True, type="primary" if st.session_state.active_view == "Metabolic" else "secondary"):
-        st.session_state.active_view = "Metabolic"
-        st.rerun()
-        
-with col2:
-    if st.button("Logistics", use_container_width=True, type="primary" if st.session_state.active_view == "Logistics" else "secondary"):
-        st.session_state.active_view = "Logistics"
-        st.rerun()
-        
-with col3:
-    if st.button("Agent", use_container_width=True, type="primary" if st.session_state.active_view == "Agent" else "secondary"):
-        st.session_state.active_view = "Agent"
-        st.rerun()
+for col, view in zip(cols, views):
+    with col:
+        if st.button(view, use_container_width=True, type="primary" if st.session_state.active_view == view else "secondary"):
+            st.session_state.active_view = view
+            st.rerun()
 
 st.markdown("---")
 
