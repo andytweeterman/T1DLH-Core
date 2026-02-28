@@ -10,7 +10,8 @@ st.set_page_config(page_title="TLDH | Contextual Life Hub", page_icon="🩸", la
 theme = styles.apply_theme()
 
 # 2. INITIALIZE GEMINI CLIENT
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 model_text = genai.GenerativeModel('gemini-3-flash-preview')
 model_json = genai.GenerativeModel(
