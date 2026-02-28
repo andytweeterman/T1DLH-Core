@@ -61,23 +61,23 @@ def get_mock_cgm():
     # Calculate difference
     df['diff'] = df['Glucose_Value'].diff().fillna(0)
 
-    def get_trend(change):
-        if change > 15:
-            return 'DoubleUp'
-        elif 10 < change <= 15:
-            return 'SingleUp'
-        elif 5 < change <= 10:
-            return 'FortyFiveUp'
-        elif -5 <= change <= 5:
-            return 'Flat'
-        elif -10 <= change < -5:
-            return 'FortyFiveDown'
-        elif -15 <= change < -10:
-            return 'SingleDown'
-        else: # change < -15
-            return 'DoubleDown'
-
-    df['Trend'] = df['diff'].apply(get_trend)
+    conditions = [
+        df['diff'] > 15,
+        (df['diff'] > 10) & (df['diff'] <= 15),
+        (df['diff'] > 5) & (df['diff'] <= 10),
+        (df['diff'] >= -5) & (df['diff'] <= 5),
+        (df['diff'] >= -10) & (df['diff'] < -5),
+        (df['diff'] >= -15) & (df['diff'] < -10)
+    ]
+    choices = [
+        'DoubleUp',
+        'SingleUp',
+        'FortyFiveUp',
+        'Flat',
+        'FortyFiveDown',
+        'SingleDown'
+    ]
+    df['Trend'] = np.select(conditions, choices, default='DoubleDown')
 
     # Drop the diff column as it's not requested in the final output
     df = df.drop(columns=['diff'])
