@@ -5,8 +5,7 @@ from datetime import datetime, timedelta
 def fetch_health_data():
     """Generates 24 hours of mock CGM data."""
     now = datetime.now()
-    times = [now - timedelta(minutes=5*i) for i in range(288)]
-    times.reverse()
+    times = pd.date_range(end=now, periods=288, freq='5min')
     
     # Create a realistic glucose curve
     base = 120 + 30 * np.sin(np.linspace(0, 3*np.pi, 288))
