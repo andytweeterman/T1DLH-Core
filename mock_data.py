@@ -25,10 +25,14 @@ def get_mock_cgm():
     # Momentum factor to create smooth curves
     current_trend_val = 0
 
-    for _ in range(num_points - 1):
+    # Pre-generate random arrays to avoid calling np.random.randint in the loop
+    trend_deltas = np.random.randint(-2, 3, size=num_points - 1)
+    noises = np.random.randint(-2, 3, size=num_points - 1)
+
+    for i in range(num_points - 1):
         # Update trend value slightly to simulate changing metabolic conditions
         # Bias the trend update to keep it somewhat stable but changing
-        trend_delta = np.random.randint(-2, 3) # -2 to 2
+        trend_delta = trend_deltas[i] # -2 to 2
         current_trend_val += trend_delta
 
         # Dampen the trend if it gets too high to avoid runaway values
@@ -36,7 +40,7 @@ def get_mock_cgm():
             current_trend_val = int(current_trend_val * 0.8)
 
         # Add some noise
-        noise = np.random.randint(-2, 3)
+        noise = noises[i]
         change = current_trend_val + noise
 
         current_value += change
