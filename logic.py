@@ -34,9 +34,15 @@ def fetch_health_data():
                 if records:
                     df = pd.DataFrame(records)
                     
-                    # Map Dexcom's JSON to our expected DataFrame format
-                    df['Timestamp'] = pd.to_datetime(df['systemTime'])
-                    df['Glucose_Value'] = df['value']
+                    # SAFETY UPGRADE 1: Use displayTime to avoid UTC chart shifting
+                    time_col = 'displayTime' if 'displayTime' in df.columns else 'systemTime'
+                    df['Timestamp'] = pd.to_datetime(df[time_col])
+                    
+                    # SAFETY UPGRADE 2: Force numeric to prevent string calculation crashes
+                    df['Glucose_Value'] = pd.to_numeric(df['value'], errors='coerce')
+                    
+                    # Drop any rows where the glucose value came back invalid/NaN
+                    df = df.dropna(subset=['Glucose_Value'])
                     
                     # Sort chronologically (oldest to newest)
                     df = df.sort_values('Timestamp').reset_index(drop=True)
