@@ -213,6 +213,6 @@ def apply_theme():
 
 FOOTER_HTML = """
 <div style="text-align: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid #CCCCCC; color: #333333; font-size: 13px; font-family: 'Inter', sans-serif; letter-spacing: 1.5px;">
-    T1DLH • CONTEXTUAL LIFE HUB • EXPERIMENTAL COGNITIVE OFFLOADING
+    SMART HEALTH COMPANION • DAILY WELLNESS TRACKER
 </div>
 """
