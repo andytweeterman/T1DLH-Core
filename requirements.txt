@@ -3,3 +3,4 @@ pandas
 plotly
 google-generativeai
 numpy
+requests==2.31.0
