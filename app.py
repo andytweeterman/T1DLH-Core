@@ -85,11 +85,11 @@ st.markdown("---")
 # 7. RENDER SELECTED VIEW
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
-    cols = st.columns(4)
+    # Changed to 3 columns, removed Next Context
+    cols = st.columns(3)
     cols[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
     cols[1].metric("Trend", latest['Trend'])
     cols[2].metric("Active Insulin", "1.5 U", "-0.2 U")
-    cols[3].metric("Next Context", current_context, "Active", delta_color="off")
 
     st.markdown("---")
     fig = go.Figure()
@@ -101,15 +101,22 @@ if st.session_state.active_view == "Wellness":
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3 = st.columns(3)
+    
+    # Custom CSS mirroring the st.metric cards exactly
+    card_style = f"background-color: {theme['CARD_BG']}; padding: 20px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1); text-align: center; height: 100%;"
+    label_style = f"color: {theme['TEXT_SECONDARY']}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.8rem; margin-bottom: 10px;"
+    value_style = f"color: {theme['TEXT_PRIMARY']}; font-weight: 800; font-size: 1.2rem;"
+
+    transit_status = "🟢 SAFE" if current_context != "Driving" else "🔴 CAREFUL DRIVING"
+    meeting_status = "🟡 CAUTION" if "Strategy" in current_context else "🟢 ALL CLEAR"
+    daily_status = "🟢 GOOD<br><span style='font-size:0.9rem; font-weight:400; color:{theme['TEXT_SECONDARY']}'>Sensor expires in 3 days</span>"
+
     with h1:
-        st.info("**1 HOUR (Transit)**")
-        st.markdown("🟢 **SAFE**" if current_context != "Driving" else "🔴 **CAREFUL DRIVING**")
+        st.markdown(f"<div style='{card_style}'><div style='{label_style}'>1 HOUR (Transit)</div><div style='{value_style}'>{transit_status}</div></div>", unsafe_allow_html=True)
     with h2:
-        st.info("**4 HOURS (Meetings)**")
-        st.markdown("🟡 **CAUTION: STRESS SPIKE**" if "Strategy" in current_context else "🟢 **ALL CLEAR**")
+        st.markdown(f"<div style='{card_style}'><div style='{label_style}'>4 HOURS (Meetings)</div><div style='{value_style}'>{meeting_status}</div></div>", unsafe_allow_html=True)
     with h3:
-        st.info("**24 HOURS (Daily)**")
-        st.markdown("🟢 **GOOD** - Sensor expires in 3 days.")
+        st.markdown(f"<div style='{card_style}'><div style='{label_style}'>24 HOURS (Daily)</div><div style='{value_style}'>{daily_status}</div></div>", unsafe_allow_html=True)
 
 elif st.session_state.active_view == "Assistant":
     st.markdown("### Health Assistant")
