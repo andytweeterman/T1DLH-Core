@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # 1. PAGE SETUP
 st.set_page_config(page_title="TLDH | Contextual Life Hub", page_icon="🩸", layout="wide")
-theme = styles.apply_theme()
+styles.apply_theme() # Injects auto-switching CSS variables
 
 # 2. INITIALIZE GEMINI CLIENT
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -28,7 +28,7 @@ with st.sidebar:
     st.header("Context Settings")
     current_context = st.selectbox(
         "Current Activity",
-        ["Nominal", "Driving", "High Stress Meeting", "Capital One Strategy Review", "Pinewood Derby prep with Lucas"],
+        ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
         index=0
     )
 
@@ -36,7 +36,7 @@ with st.sidebar:
 try:
     with st.spinner("Connecting to Bio-Telemetry..."):
         full_data = logic.fetch_health_data()
-        _, status, color, reason = logic.calc_glycemic_risk(full_data, current_context)
+        _, status, reason = logic.calc_glycemic_risk(full_data, current_context)
         latest = full_data.iloc[-1]
 except Exception as e:
     logger.error(f"Data loading failed: {e}", exc_info=True)
@@ -48,13 +48,13 @@ safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
 st.markdown(f"""
     <div style="padding-bottom: 20px;">
-        <span style="font-size: 28px; font-weight: bold; color: {theme['TEXT_PRIMARY']};">My Health Hub</span><br>
-        <span style="color: {theme['TEXT_SECONDARY']};">Smart Health Companion</span>
+        <span style="font-size: 28px; font-weight: bold; color: var(--text-primary);">My Health Hub</span><br>
+        <span style="color: var(--text-secondary);">Smart Health Companion</span>
     </div>
     <div style="margin-bottom: 20px;">
-        <span style="font-weight: 600; color: {theme['TEXT_SECONDARY']};">Status: </span>
-        <div class="gov-pill" style="background: {color}44; border: 1px solid {color}; color: {theme['TEXT_PRIMARY']};">{safe_status}</div>
-        <div style="margin-top: 5px; font-size: 14px; color: {theme['TEXT_SECONDARY']};">Analysis: {safe_reason}</div>
+        <span style="font-weight: 600; color: var(--text-secondary);">Status: </span>
+        <div class="gov-pill">{safe_status}</div>
+        <div style="margin-top: 5px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
     </div>
 """, unsafe_allow_html=True)
 st.divider()
@@ -85,43 +85,49 @@ st.markdown("---")
 # 7. RENDER SELECTED VIEW
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
-    # Changed to 3 columns, removed Next Context
     cols = st.columns(3)
     cols[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
     cols[1].metric("Trend", latest['Trend'])
     cols[2].metric("Active Insulin", "1.5 U", "-0.2 U")
 
     st.markdown("---")
+    
+    # Plotly setup with transparent backgrounds to let OS theme show through
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color=theme['ACCENT'], width=3)))
+    fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color='#8AADF4', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
     fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
-    fig.update_layout(template=theme['CHART_TEMPLATE'], height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL")
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='gray'),
+        height=400, 
+        margin=dict(l=0, r=0, t=30, b=0), 
+        yaxis_title="mg/dL"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3 = st.columns(3)
     
-    # Custom CSS mirroring the st.metric cards exactly
-    card_style = f"background-color: {theme['CARD_BG']}; padding: 20px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1); text-align: center; height: 100%;"
-    label_style = f"color: {theme['TEXT_SECONDARY']}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.8rem; margin-bottom: 10px;"
-    value_style = f"color: {theme['TEXT_PRIMARY']}; font-weight: 800; font-size: 1.2rem;"
+    card_style = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center; height: 100%;"
+    label_style = "color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.8rem; margin-bottom: 10px;"
+    value_style = "color: var(--text-primary); font-weight: 800; font-size: 1.2rem;"
 
-    transit_status = "🟢 SAFE" if current_context != "Driving" else "🔴 CAREFUL DRIVING"
-    meeting_status = "🟡 CAUTION" if "Strategy" in current_context else "🟢 ALL CLEAR"
-    daily_status = "🟢 GOOD<br><span style='font-size:0.9rem; font-weight:400; color:{theme['TEXT_SECONDARY']}'>Sensor expires in 3 days</span>"
+    transit_status = "🟢 SAFE" if current_context != "Travel" else "🔴 EVALUATE TRANSIT"
+    meeting_status = "🟡 CAUTION" if current_context == "Stressed" else "🟢 ALL CLEAR"
+    daily_status = "🟢 GOOD<br><span style='font-size:0.9rem; font-weight:400; color:var(--text-secondary)'>Sensor expires in 3 days</span>"
 
     with h1:
         st.markdown(f"<div style='{card_style}'><div style='{label_style}'>1 HOUR (Transit)</div><div style='{value_style}'>{transit_status}</div></div>", unsafe_allow_html=True)
     with h2:
-        st.markdown(f"<div style='{card_style}'><div style='{label_style}'>4 HOURS (Meetings)</div><div style='{value_style}'>{meeting_status}</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='{card_style}'><div style='{label_style}'>4 HOURS (Logistics)</div><div style='{value_style}'>{meeting_status}</div></div>", unsafe_allow_html=True)
     with h3:
         st.markdown(f"<div style='{card_style}'><div style='{label_style}'>24 HOURS (Daily)</div><div style='{value_style}'>{daily_status}</div></div>", unsafe_allow_html=True)
 
 elif st.session_state.active_view == "Assistant":
     st.markdown("### Health Assistant")
 
-    # MANUAL TRIGGER TO SAVE API QUOTA
     if st.button("Generate Live Health Briefing", type="primary"):
         with st.spinner("Analyzing health data..."):
             try:
@@ -154,7 +160,7 @@ elif st.session_state.active_view == "Assistant":
             else:
                 st.markdown(message["content"])
 
-    if prompt := st.chat_input("Log an event (e.g., 'Pump site itching, ate handful of pretzels, stressed about meeting')"):
+    if prompt := st.chat_input("Log an event (e.g., 'Pump site itching, ate handful of pretzels, stressed')"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
