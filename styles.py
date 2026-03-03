@@ -1,19 +1,16 @@
 import streamlit as st
 
 def apply_theme():
-    # We use CSS variables and media queries so the Apple OS handles the light/dark switching natively.
     custom_css = """
     <style>
-        /* HIDE STREAMLIT HEADER AND FOOTER */
+        /* HIDE STREAMLIT UI */
         #MainMenu {visibility: hidden;}
         header {visibility: hidden;}
         footer {visibility: hidden;}
         .stDeployButton {display:none;}
 
-        /* IMPORT PREMIUM FONT */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap)');
 
-        /* DEFINE SYSTEM COLOR VARIABLES (Light Mode Default) */
         :root {
             --bg-color: #FFFFFF;
             --card-bg: #F0F2F6;
@@ -24,7 +21,6 @@ def apply_theme():
             --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
         }
 
-        /* DEFINE SYSTEM COLOR VARIABLES (Dark Mode Override) */
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg-color: #24273A;
@@ -37,7 +33,6 @@ def apply_theme():
             }
         }
 
-        /* APPLY FONT AND BG GLOBALLY */
         html, body, [class*="css"], .stApp {
             font-family: 'Inter', sans-serif !important;
             -webkit-font-smoothing: antialiased;
@@ -45,10 +40,14 @@ def apply_theme():
             color: var(--text-primary) !important;
         }
 
-        /* BUTTON GLOW UP (Tabs & Actions) */
-        button[kind="primary"] {
+        /* -----------------------
+           BUTTON CSS OVERRIDES
+           ----------------------- */
+        
+        /* 1. PRIMARY BUTTONS (Submit & Active Tabs) */
+        button[kind="primary"], div.stButton > button[kind="primary"] {
             background-color: var(--accent) !important;
-            color: #FFFFFF !important; 
+            color: #FFFFFF !important;  /* FORCE WHITE TEXT */
             border-radius: 20px !important;
             border: none !important;
             box-shadow: var(--card-shadow) !important;
@@ -56,7 +55,8 @@ def apply_theme():
             transition: transform 0.2s ease, filter 0.2s ease !important;
         }
         
-        button[kind="primary"] p, button[kind="primary"] div {
+        /* Catch inner span/p text to ensure it stays white */
+        button[kind="primary"] *, div.stButton > button[kind="primary"] * {
             color: #FFFFFF !important;
         }
 
@@ -65,6 +65,7 @@ def apply_theme():
             filter: brightness(1.1);
         }
 
+        /* 2. SECONDARY BUTTONS (Inactive Tabs) */
         button[kind="secondary"] {
             background-color: var(--card-bg) !important;
             border: 1px solid rgba(128, 128, 128, 0.1) !important;
@@ -75,19 +76,14 @@ def apply_theme():
             transition: transform 0.2s ease, box-shadow 0.2s ease !important;
         }
         
-        button[kind="secondary"] p, button[kind="secondary"] div {
+        button[kind="secondary"] * {
             color: var(--text-secondary) !important;
         }
 
         button[kind="secondary"]:hover {
             transform: scale(1.02);
-            box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.15) !important;
         }
         
-        button[kind="secondary"]:hover p {
-            color: var(--text-primary) !important;
-        }
-
         /* METRIC CARDS */
         [data-testid="stMetric"] {
             background-color: var(--card-bg);
@@ -97,17 +93,13 @@ def apply_theme():
             box-shadow: var(--card-shadow);
             transition: transform 0.2s ease;
         }
-        
-        [data-testid="stMetric"]:hover {
-            transform: scale(1.02);
-        }
+        [data-testid="stMetric"]:hover { transform: scale(1.02); }
 
         [data-testid="stMetricValue"] {
             color: var(--text-primary) !important;
             font-weight: 800 !important;
             font-size: 2rem !important;
         }
-        
         [data-testid="stMetricLabel"] {
             color: var(--text-secondary) !important;
             font-weight: 600 !important;
@@ -116,7 +108,7 @@ def apply_theme():
             font-size: 0.8rem !important;
         }
 
-        /* PREMIUM STATUS PILL */
+        /* PILLS */
         .gov-pill {
             padding: 8px 24px;
             border-radius: 30px;
@@ -129,42 +121,9 @@ def apply_theme():
             box-shadow: var(--card-shadow);
             text-transform: uppercase;
         }
-
-        /* MOBILE RESPONSIVENESS */
-        @media (max-width: 430px) {
-            [data-testid="stHorizontalBlock"] {
-                flex-wrap: wrap !important;
-                gap: 12px !important;
-            }
-            [data-testid="column"], [data-testid="stColumn"] {
-                min-width: 40% !important;
-                flex: 1 1 calc(50% - 12px) !important;
-            }
-            h1 { font-size: 1.8rem !important; }
-        }
-
-        button, input, [role="button"] {
-            min-height: 48px !important;
-        }
-
-        /* GENERAL FIXES */
-        [data-testid="stChatMessageContent"] *, 
-        [data-testid="stMarkdownContainer"] p, 
-        .streamlit-expanderContent p {
-            color: var(--text-primary) !important;
-        }
-
-        code, pre {
-            background-color: var(--card-bg) !important;
-            color: var(--accent) !important;
-            border-radius: 6px !important;
-            padding: 2px 6px !important;
-            font-family: monospace !important;
-        }
-
-        .block-container {
-            padding-top: 1rem !important;
-        }
+        
+        /* General Fixes */
+        .block-container { padding-top: 1rem !important; }
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
