@@ -19,20 +19,41 @@ st.set_page_config(page_title="TLDH | Total Life Download Hub", page_icon="🧬"
 styles.apply_theme()  # Injects auto-switching CSS variables
 
 # -----------------------------------------------------------------------------
-# 2. INITIALIZE GEMINI CLIENT (UPDATED TO V3)
+# 2. INITIALIZE GEMINI CLIENT (2026 PROTOCOL)
 # -----------------------------------------------------------------------------
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # Updated to Gemini 3.0 Flash
-    model_text = genai.GenerativeModel('gemini-3.0-flash')
-    
+    # ---------------------------------------------------------
+    # TEMPORAL MODEL SELECTION
+    # Prioritizes Gemini 3 (2026), falls back to 1.5 if key is legacy.
+    # ---------------------------------------------------------
+    try:
+        # TARGET STATE: March 2026 Architecture
+        target_model = 'gemini-3-flash-preview'
+        
+        # Test the connection to the future model
+        test_model = genai.GenerativeModel(target_model)
+        # We run a dummy generation to verify access rights immediately
+        test_model.generate_content("Ping") 
+        
+        active_model_name = target_model
+        model_status = "✨ GEMINI 3.0 FLASH (PREVIEW) ONLINE"
+        
+    except Exception:
+        # FALLBACK STATE: Legacy Architecture (Safety Net)
+        active_model_name = 'gemini-1.5-flash'
+        model_status = "⚠️ LEGACY FALLBACK: GEMINI 1.5 FLASH"
+
+    # Instantiate the working models
+    model_text = genai.GenerativeModel(active_model_name)
     model_json = genai.GenerativeModel(
-        'gemini-3.0-flash',
+        active_model_name,
         generation_config={"response_mime_type": "application/json"}
     )
+    
 except Exception as e:
-    st.error(f"⚠️ API Configuration Error: {e}")
+    st.error(f"⚠️ API Critical Failure: {e}")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -45,6 +66,9 @@ with st.sidebar:
         ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
         index=0
     )
+    st.markdown("---")
+    # Display which AI brain is currently driving the car
+    st.caption(f"**AI Engine:**\n{model_status}")
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
@@ -108,6 +132,7 @@ st.markdown("---")
 # 7. RENDER VIEWS
 # -----------------------------------------------------------------------------
 
+# --- VIEW A: WELLNESS ---
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     cols = st.columns(3)
@@ -131,6 +156,7 @@ if st.session_state.active_view == "Wellness":
     )
     st.plotly_chart(fig, use_container_width=True)
 
+# --- VIEW B: SCHEDULE ---
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3 = st.columns(3)
     card_style = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center; height: 100%;"
@@ -148,6 +174,7 @@ elif st.session_state.active_view == "Schedule":
     with h3:
         st.markdown(f"<div style='{card_style}'><div style='{label_style}'>24 HOURS (Daily)</div><div style='{value_style}'>{daily_status}</div></div>", unsafe_allow_html=True)
 
+# --- VIEW C: ASSISTANT ---
 elif st.session_state.active_view == "Assistant":
     st.markdown("### 🧬 Total Life Download Engine")
     st.caption("Log unstructured thoughts to track Biological, Cognitive, and Emotional load.")
@@ -180,15 +207,17 @@ elif st.session_state.active_view == "Assistant":
 
     with st.form("journal_form", clear_on_submit=True):
         text_input = st.text_area("Life Download:", placeholder="e.g. 'Stressed about work plan, but wife is home...'")
-        # BUTTON FIX: This relies on the updated styles.py to force white text
         submitted = st.form_submit_button("Analyze Load", type="primary")
         
         if submitted and text_input:
             with st.spinner("Analyzing Life Load..."):
                 try:
                     full_prompt = f"{extraction_prompt}\n\nUser Entry: {text_input}"
+                    
+                    # GENERATE CONTENT
                     response = model_json.generate_content(full_prompt)
                     
+                    # SANITIZE RESPONSE
                     clean_text = response.text.strip()
                     if clean_text.startswith("```"):
                         clean_text = clean_text.replace("```json", "").replace("```", "")
