@@ -8,23 +8,37 @@ import json
 import logging
 from datetime import datetime
 
+# Configure logging
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
-# 1. PAGE SETUP
+# -----------------------------------------------------------------------------
+# 1. PAGE SETUP & THEME
+# -----------------------------------------------------------------------------
 st.set_page_config(page_title="TLDH | Total Life Download Hub", page_icon="🧬", layout="wide")
-styles.apply_theme() # Injects auto-switching CSS variables
+styles.apply_theme()  # Injects auto-switching CSS variables (Light/Dark mode)
 
+# -----------------------------------------------------------------------------
 # 2. INITIALIZE GEMINI CLIENT
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# -----------------------------------------------------------------------------
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    
+    # Text Model for general chat
+    model_text = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # JSON Model for structured data extraction
+    model_json = genai.GenerativeModel(
+        'gemini-1.5-flash',
+        generation_config={"response_mime_type": "application/json"}
+    )
+except Exception as e:
+    st.error(f"⚠️ API Configuration Error: {e}")
+    st.stop()
 
-model_text = genai.GenerativeModel('gemini-1.5-flash')
-model_json = genai.GenerativeModel(
-    'gemini-1.5-flash',
-    generation_config={"response_mime_type": "application/json"}
-)
-
+# -----------------------------------------------------------------------------
 # 3. CONTEXT SIDEBAR
+# -----------------------------------------------------------------------------
 with st.sidebar:
     st.header("Context Settings")
     current_context = st.selectbox(
@@ -33,7 +47,9 @@ with st.sidebar:
         index=0
     )
 
-# 4. DATA LOADING
+# -----------------------------------------------------------------------------
+# 4. DATA LOADING (Dexcom/Whoop/Mock)
+# -----------------------------------------------------------------------------
 try:
     with st.spinner("Syncing Bio-Telemetry..."):
         full_data = logic.fetch_health_data()
@@ -44,9 +60,12 @@ except Exception as e:
     st.error("Oops! Something went wrong loading your health data.")
     st.stop()
 
+# -----------------------------------------------------------------------------
 # 5. HEADER UI
+# -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
+
 st.markdown(f"""
     <div style="padding-bottom: 20px;">
         <span style="font-size: 28px; font-weight: bold; color: var(--text-primary);">Total Life Download Hub</span><br>
@@ -58,9 +77,12 @@ st.markdown(f"""
         <div style="margin-top: 5px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
     </div>
 """, unsafe_allow_html=True)
+
 st.divider()
 
-# 6. MOBILE-FIRST BUTTON NAVIGATION
+# -----------------------------------------------------------------------------
+# 6. NAVIGATION (Mobile-First)
+# -----------------------------------------------------------------------------
 if "active_view" not in st.session_state:
     st.session_state.active_view = "Wellness"
 
@@ -83,7 +105,11 @@ with col3:
 
 st.markdown("---")
 
-# 7. RENDER SELECTED VIEW
+# -----------------------------------------------------------------------------
+# 7. RENDER VIEWS
+# -----------------------------------------------------------------------------
+
+# --- VIEW A: WELLNESS (Metrics + Chart) ---
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     cols = st.columns(3)
@@ -108,9 +134,11 @@ if st.session_state.active_view == "Wellness":
     )
     st.plotly_chart(fig, use_container_width=True)
 
+# --- VIEW B: SCHEDULE (Context Cards) ---
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3 = st.columns(3)
     
+    # Card CSS mirroring the st.metric cards
     card_style = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center; height: 100%;"
     label_style = "color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.8rem; margin-bottom: 10px;"
     value_style = "color: var(--text-primary); font-weight: 800; font-size: 1.2rem;"
@@ -126,11 +154,12 @@ elif st.session_state.active_view == "Schedule":
     with h3:
         st.markdown(f"<div style='{card_style}'><div style='{label_style}'>24 HOURS (Daily)</div><div style='{value_style}'>{daily_status}</div></div>", unsafe_allow_html=True)
 
+# --- VIEW C: ASSISTANT (The "Life Download" Engine) ---
 elif st.session_state.active_view == "Assistant":
     st.markdown("### 🧬 Total Life Download Engine")
     st.caption("Log unstructured thoughts to track Biological, Cognitive, and Emotional load.")
 
-    # The "Why" Engine Prompt
+    # The System Prompt for the LLM
     extraction_prompt = """
     **ROLE:** You are the Total Life Download Analyst. 
     **GOAL:** The user will provide unstructured "downloads" (journal entries, rants, status updates).
@@ -144,7 +173,7 @@ elif st.session_state.active_view == "Assistant":
     * **Cog:** Deep work, studying, strategic planning, decision fatigue.
     * **Emo:** Family dynamics, anxiety, excitement, frustration.
     
-    **OUTPUT FORMAT (JSON):**
+    **OUTPUT FORMAT (Strict JSON only):**
     {
         "reply": "Empathetic response string here.",
         "summary": "5-word summary of the entry",
@@ -154,10 +183,11 @@ elif st.session_state.active_view == "Assistant":
     }
     """
 
+    # Initialize Session State for History
     if "journal_history" not in st.session_state:
         st.session_state.journal_history = []
 
-    # Input Area
+    # --- INPUT FORM ---
     with st.form("journal_form", clear_on_submit=True):
         text_input = st.text_area("Life Download:", placeholder="e.g. 'Stressed about work plan, but wife is home. Did home improvement all day.'")
         submitted = st.form_submit_button("Analyze Load", type="primary")
@@ -165,24 +195,37 @@ elif st.session_state.active_view == "Assistant":
         if submitted and text_input:
             with st.spinner("Analyzing Life Load..."):
                 try:
+                    # 1. GENERATE
                     full_prompt = f"{extraction_prompt}\n\nUser Entry: {text_input}"
                     response = model_json.generate_content(full_prompt)
-                    parsed_data = json.loads(response.text)
                     
-                    # Add timestamp
+                    # 2. SANITIZE (Crucial Fix for JSON Errors)
+                    clean_text = response.text.strip()
+                    # Remove potential markdown wrappers
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text.replace("```json", "").replace("```", "")
+                    
+                    # 3. PARSE
+                    parsed_data = json.loads(clean_text)
+                    
+                    # 4. TIMESTAMP & SAVE
                     parsed_data["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    st.session_state.journal_history.insert(0, parsed_data) # Add to top
+                    st.session_state.journal_history.insert(0, parsed_data) # Add to top of list
+                    
+                    # 5. REFRESH
+                    st.rerun()
                     
                 except Exception as e:
+                    # Robust Error Logging
                     logger.error(f"Journal analysis failed: {e}", exc_info=True)
-                    st.error("Analysis failed. Please try again.")
+                    st.error(f"Analysis failed. Details: {e}")
 
-    # Display History
+    # --- DISPLAY HISTORY ---
     if st.session_state.journal_history:
         latest_entry = st.session_state.journal_history[0]
         
         # 1. The Empathetic Reply
-        st.success(f"**Insight:** {latest_entry['reply']}")
+        st.success(f"**Insight:** {latest_entry.get('reply', 'Analysis complete.')}")
         
         # 2. The Load Scoreboard
         s_col1, s_col2, s_col3 = st.columns(3)
@@ -196,7 +239,8 @@ elif st.session_state.active_view == "Assistant":
             st.metric("❤️ Emotional Load", f"{scores['emo']}/10", delta="Allostatic Load" if scores['emo'] > 6 else None, delta_color="inverse")
             
         # 3. Context Tags & Prediction
-        st.markdown(f"**🏷️ Drivers:** {' '.join([f'`{t}`' for t in latest_entry.get('tags', [])])}")
+        tags = latest_entry.get('tags', [])
+        st.markdown(f"**🏷️ Drivers:** {' '.join([f'`{t}`' for t in tags])}")
         st.info(f"**📉 Physiological Prediction:** {latest_entry.get('impact_prediction', 'No prediction available.')}")
         
         st.divider()
@@ -205,7 +249,8 @@ elif st.session_state.active_view == "Assistant":
         with st.expander("📜 Previous Downloads"):
             for entry in st.session_state.journal_history[1:]:
                 st.markdown(f"**{entry['timestamp']}** - *{entry.get('summary', 'Log')}*")
-                st.caption(f"Bio: {entry['scores']['bio']} | Cog: {entry['scores']['cog']} | Emo: {entry['scores']['emo']}")
+                scores_prev = entry.get("scores", {"bio":0, "cog":0, "emo":0})
+                st.caption(f"Bio: {scores_prev['bio']} | Cog: {scores_prev['cog']} | Emo: {scores_prev['emo']}")
                 st.markdown("---")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
