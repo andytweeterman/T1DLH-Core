@@ -75,8 +75,9 @@ with st.sidebar:
 # -----------------------------------------------------------------------------
 try:
     with st.spinner("Syncing Bio-Telemetry..."):
-        full_data = logic.fetch_health_data()
-        _, status, reason = logic.calc_glycemic_risk(full_data, current_context)
+        raw_data = logic.fetch_health_data()
+        # The risk calculator now returns the MODIFIED data frame as the first return value
+        full_data, status, reason = logic.calc_glycemic_risk(raw_data, current_context)
         latest = full_data.iloc[-1]
 except Exception as e:
     logger.error(f"Data loading failed: {e}", exc_info=True)

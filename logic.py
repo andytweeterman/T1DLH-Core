@@ -1,103 +1,128 @@
 import pandas as pd
 import numpy as np
-import requests
-import streamlit as st
 from datetime import datetime, timedelta
+import streamlit as st
 
 def fetch_health_data():
-    """Fetches real data from Dexcom API, with a graceful fallback to mock data."""
+    """
+    Simulates fetching 24 hours of Dexcom/Whoop data.
+    In MVP, this generates a base sine wave (Dexcom Sandbox style)
+    and then injects 'Life Chaos' based on the user's context.
+    """
+    # 1. Create Time Index (Last 24 hours, 5-min intervals)
+    end_time = datetime.now()
+    start_time = end_time - timedelta(hours=24)
+    timestamps = pd.date_range(start=start_time, end=end_time, freq='5min')
     
-    # 1. ATTEMPT TO FETCH REAL API DATA
-    dexcom_token = st.secrets.get("DEXCOM_ACCESS_TOKEN", None)
+    # 2. Generate Base "Perfect" Sine Wave (The Dexcom Sandbox Artifact)
+    # A smooth curve oscillating between 100 and 160
+    base_glucose = 130 + 30 * np.sin(np.linspace(0, 4 * np.pi, len(timestamps)))
     
-    if dexcom_token:
-        try:
-            # Dexcom V3 API requires a time range (last 24 hours)
-            end_time = datetime.utcnow()
-            start_time = end_time - timedelta(hours=24)
-            
-            url = "https://sandbox-api.dexcom.com/v3/users/self/egvs"
-            headers = {
-                "Authorization": f"Bearer {dexcom_token}"
-            }
-            params = {
-                "startDate": start_time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "endDate": end_time.strftime("%Y-%m-%dT%H:%M:%S")
-            }
-            
-            response = requests.get(url, headers=headers, params=params)
-            
-            if response.status_code == 200:
-                data = response.json()
-                records = data.get('records', [])
-                
-                if records:
-                    df = pd.DataFrame(records)
-                    
-                    # SAFETY UPGRADE 1: Use displayTime to avoid UTC chart shifting
-                    time_col = 'displayTime' if 'displayTime' in df.columns else 'systemTime'
-                    df['Timestamp'] = pd.to_datetime(df[time_col])
-                    
-                    # SAFETY UPGRADE 2: Force numeric to prevent string calculation crashes
-                    df['Glucose_Value'] = pd.to_numeric(df['value'], errors='coerce')
-                    
-                    # Drop any rows where the glucose value came back invalid/NaN
-                    df = df.dropna(subset=['Glucose_Value'])
-                    
-                    # Sort chronologically (oldest to newest)
-                    df = df.sort_values('Timestamp').reset_index(drop=True)
-                    
-                    # Map Dexcom's official trend arrows, with a fallback calculation
-                    if 'trend' in df.columns:
-                        df['Trend'] = df['trend'].str.replace('([A-Z])', r' \1', regex=True).str.title()
-                    else:
-                        df['Trend'] = 'Steady'
-                        df.loc[df['Glucose_Value'].diff() > 3, 'Trend'] = 'Rising'
-                        df.loc[df['Glucose_Value'].diff() < -3, 'Trend'] = 'Falling'
-                    
-                    return df[['Timestamp', 'Glucose_Value', 'Trend']]
-                    
-        except Exception as e:
-            # If the API call fails, we log it and silently fall back to mock data
-            print(f"API Integration Error: {e}")
-
-    # 2. GRACEFUL FALLBACK (Mock Data)
-    now = datetime.now()
-    times = pd.date_range(end=now, periods=288, freq='5min')
+    df = pd.DataFrame({
+        'Timestamp': timestamps,
+        'Glucose_Value': base_glucose,
+        'Trend': 'Flat' # Placeholder
+    })
     
-    base = 120 + 30 * np.sin(np.linspace(0, 3*np.pi, 288))
-    noise = np.random.normal(0, 4, 288)
-    glucose = np.clip(base + noise, 65, 220).astype(int)
-    
-    df = pd.DataFrame({'Timestamp': times, 'Glucose_Value': glucose})
-    df['Trend'] = 'Steady'
-    df.loc[df['Glucose_Value'].diff() > 3, 'Trend'] = 'Rising'
-    df.loc[df['Glucose_Value'].diff() < -3, 'Trend'] = 'Falling'
+    # 3. INJECT BIOLOGICAL CHAOS (The "Real Life" Simulator)
+    # We grab the context from Streamlit Session State if it exists
+    context = "Normal"
+    # This is a hack to read the sidebar widget value from logic.py
+    # In a real app, pass context as an argument.
+    # For MVP speed, we assume 'Normal' if not found.
     
     return df
 
-def calc_glycemic_risk(df, current_context="Normal"):
-    """Applies ERM logic mapped to the streamlined context variables."""
-    try:
-        latest = df.iloc[-1]
-        bg = latest['Glucose_Value']
-        trend = latest['Trend']
+def apply_context_modifiers(df, context):
+    """
+    Takes the perfect sine wave and ruins it with 'Real Life'.
+    """
+    # Create a noise generator
+    np.random.seed(42) # Seed for consistency in demo, remove for true chaos
+    noise = np.random.normal(0, 3, len(df)) # Standard background noise (±3 mg/dL)
+    
+    # MODIFIER: CORTISOL (Stress/Sick) -> Raises baseline & variance
+    if context == "Stressed":
+        drift = np.linspace(0, 40, len(df)) # Gradual rise of +40 mg/dL over 24h
+        stress_noise = np.random.normal(0, 8, len(df)) # High variance
+        df['Glucose_Value'] = df['Glucose_Value'] + drift + stress_noise
         
-        # Logic Gate 1 (Critical Risk / Exercise Burn)
-        if bg < 70 or (bg < 90 and trend in ['Falling', 'Single Down', 'Double Down']) or (bg < 100 and current_context == 'Exercise'):
-            return df, "NEEDS ATTENTION", "Low blood sugar or exercise crash risk"
+    elif context == "Sick":
+        baseline_shift = 50 # Immediate +50 mg/dL jump
+        fever_spikes = np.random.normal(0, 12, len(df)) # Extreme variance
+        df['Glucose_Value'] = df['Glucose_Value'] + baseline_shift + fever_spikes
+
+    # MODIFIER: ADRENALINE / UPTAKE (Exercise) -> Drops baseline
+    elif context == "Exercise":
+        # Simulate a crash in the last 2 hours
+        crash_curve = np.zeros(len(df))
+        crash_curve[-24:] = np.linspace(0, -60, 24) # Drop 60 mg/dL in last 2 hours
+        df['Glucose_Value'] = df['Glucose_Value'] + crash_curve + noise
+
+    # MODIFIER: TRAVEL -> Irregular meal spikes
+    elif context == "Travel":
+        # Add random meal spikes
+        spikes = np.zeros(len(df))
+        indices = np.random.choice(range(len(df)), size=3, replace=False)
+        for idx in indices:
+            # Create a localized spike (Gaussian) around this index
+            x = np.arange(len(df))
+            spikes += 60 * np.exp(-0.5 * ((x - idx) / 6)**2) 
+        df['Glucose_Value'] = df['Glucose_Value'] + spikes + noise
         
-        # Logic Gate 2 (Resistance / Stress / Illness)
-        elif bg > 180 or (bg > 140 and current_context in ["Stressed", "Sick"]):
-            return df, "CAUTION", "Elevated due to stress or illness resistance"
+    else:
+        # Normal -> Just add basic biological noise
+        df['Glucose_Value'] = df['Glucose_Value'] + noise
+
+    # Recalculate Trend based on the new chaotic end-values
+    last_val = df['Glucose_Value'].iloc[-1]
+    prev_val = df['Glucose_Value'].iloc[-2]
+    delta = last_val - prev_val
+    
+    if delta > 3: df['Trend'] = "Rising Fast ⬆️"
+    elif delta > 1: df['Trend'] = "Rising ↗️"
+    elif delta < -3: df['Trend'] = "Falling Fast ⬇️"
+    elif delta < -1: df['Trend'] = "Falling ↘️"
+    else: df['Trend'] = "Stable ➡️"
+
+    return df
+
+# ---------------------------------------------------------
+# WRAPPER TO COMBINE FETCH & MODIFY
+# ---------------------------------------------------------
+# This is what app.py actually calls. 
+# We had to split it to get the 'context' variable passed in properly.
+# But since app.py calls `fetch_health_data()` without args in your current code,
+# let's adapt app.py slightly or handle it here.
+#
+# BETTER APPROACH FOR MVP:
+# We will modify `fetch_health_data` to just return the base, 
+# and let app.py call the modifier.
+# ---------------------------------------------------------
+
+def calc_glycemic_risk(df, context):
+    """
+    The ERM Engine. Calculates Risk Score based on Chaos Data.
+    """
+    # Apply the chaos modifiers FIRST, so the risk calc sees the 'Real' data
+    df = apply_context_modifiers(df, context)
+    
+    latest_glucose = df['Glucose_Value'].iloc[-1]
+    
+    # 1. BASELINE GATES
+    if latest_glucose > 180:
+        return df, "🔴 HIGH RISK", "Hyperglycemic event detected."
+    elif latest_glucose < 70:
+        return df, "🔴 CRITICAL", "Hypoglycemic event imminent."
         
-        # Logic Gate 3 (Travel / Logistics)
-        elif current_context == "Travel":
-            return df, "WATCHLIST", "Travel mode active: Monitor logistics and transit"
-            
-        # Logic Gate 4 (Nominal)
-        else:
-            return df, "STABLE", "Blood sugar and activity are stable"
-            
-    except Exception as e:
-        return df, "ERROR", f"Error: {e}"
+    # 2. CONTEXT GATES (The AI Value Add)
+    if context == "Exercise" and latest_glucose < 100:
+        return df, "🟡 CAUTION", "Glucose dropping during exertion. Carb load recommended."
+        
+    if context == "Stressed" and latest_glucose > 150:
+        return df, "🟡 ELEVATED", "Cortisol-induced resistance likely. Monitor trend."
+        
+    if context == "Sick":
+        return df, "🟠 MONITORING", "Illness protocol active. Basal increase may be required."
+
+    return df, "🟢 NOMINAL", "System within normal operating parameters."
