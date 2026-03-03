@@ -6,20 +6,21 @@ import styles
 import logic
 import json
 import logging
+from datetime import datetime
 
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # 1. PAGE SETUP
-st.set_page_config(page_title="TLDH | Contextual Life Hub", page_icon="🩸", layout="wide")
+st.set_page_config(page_title="TLDH | Total Life Download Hub", page_icon="🧬", layout="wide")
 styles.apply_theme() # Injects auto-switching CSS variables
 
 # 2. INITIALIZE GEMINI CLIENT
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-model_text = genai.GenerativeModel('gemini-3-flash-preview')
+model_text = genai.GenerativeModel('gemini-1.5-flash')
 model_json = genai.GenerativeModel(
-    'gemini-3-flash-preview',
+    'gemini-1.5-flash',
     generation_config={"response_mime_type": "application/json"}
 )
 
@@ -34,7 +35,7 @@ with st.sidebar:
 
 # 4. DATA LOADING
 try:
-    with st.spinner("Connecting to Bio-Telemetry..."):
+    with st.spinner("Syncing Bio-Telemetry..."):
         full_data = logic.fetch_health_data()
         _, status, reason = logic.calc_glycemic_risk(full_data, current_context)
         latest = full_data.iloc[-1]
@@ -48,18 +49,18 @@ safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
 st.markdown(f"""
     <div style="padding-bottom: 20px;">
-        <span style="font-size: 28px; font-weight: bold; color: var(--text-primary);">My Health Hub</span><br>
-        <span style="color: var(--text-secondary);">Smart Health Companion</span>
+        <span style="font-size: 28px; font-weight: bold; color: var(--text-primary);">Total Life Download Hub</span><br>
+        <span style="color: var(--text-secondary);">Agentic Risk Management Engine</span>
     </div>
     <div style="margin-bottom: 20px;">
-        <span style="font-weight: 600; color: var(--text-secondary);">Status: </span>
+        <span style="font-weight: 600; color: var(--text-secondary);">Current Status: </span>
         <div class="gov-pill">{safe_status}</div>
         <div style="margin-top: 5px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
     </div>
 """, unsafe_allow_html=True)
 st.divider()
 
-# 6. MOBILE-FIRST BUTTON NAVIGATION (Replacing Tabs)
+# 6. MOBILE-FIRST BUTTON NAVIGATION
 if "active_view" not in st.session_state:
     st.session_state.active_view = "Wellness"
 
@@ -92,7 +93,7 @@ if st.session_state.active_view == "Wellness":
 
     st.markdown("---")
     
-    # Plotly setup with transparent backgrounds to let OS theme show through
+    # Plotly setup with transparent backgrounds
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color='#8AADF4', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
@@ -126,67 +127,85 @@ elif st.session_state.active_view == "Schedule":
         st.markdown(f"<div style='{card_style}'><div style='{label_style}'>24 HOURS (Daily)</div><div style='{value_style}'>{daily_status}</div></div>", unsafe_allow_html=True)
 
 elif st.session_state.active_view == "Assistant":
-    st.markdown("### Health Assistant")
+    st.markdown("### 🧬 Total Life Download Engine")
+    st.caption("Log unstructured thoughts to track Biological, Cognitive, and Emotional load.")
 
-    if st.button("Generate Live Health Briefing", type="primary"):
-        with st.spinner("Analyzing health data..."):
-            try:
-                briefing_prompt = f"You are a friendly health assistant. Analyze the data and give a 2-sentence friendly summary.\nCurrent Blood Sugar: {latest['Glucose_Value']}, Current Activity: {current_context}"
-                briefing_res = model_text.generate_content(briefing_prompt)
-                st.success("**Health Briefing:**")
-                st.write(briefing_res.text)
-            except Exception as e:
-                logger.error(f"Briefing generation failed: {e}", exc_info=True)
-                st.warning("⚠️ AI assistant connection failed. Please try again later.")
-
-    st.divider()
-
+    # The "Why" Engine Prompt
     extraction_prompt = """
-    You are a friendly health assistant. The user will provide a casual update on how they are feeling or what they are doing.
-    You MUST respond in strict JSON format containing exactly two keys:
-    1. "reply": A short, empathetic, helpful response to the user.
-    2. "tags": A nested JSON object extracting the following keys: "event_type" (e.g. meal, stress, hardware), "estimated_carbs" (integer or null), "physiological_state" (e.g. high_stress, nominal), and "hardware_alert" (string or null).
+    **ROLE:** You are the Total Life Download Analyst. 
+    **GOAL:** The user will provide unstructured "downloads" (journal entries, rants, status updates).
+    
+    **YOUR TASK:**
+    1. **Validate:** Offer a brief, 1-sentence empathetic acknowledgement in the "reply" field.
+    2. **Structure:** Convert the qualitative text into a strict JSON data object that tracks "Life Load".
+    
+    **SCORING FRAMEWORK (1-10 Scale):**
+    * **Bio:** Physical stress, illness, high blood sugar, poor sleep.
+    * **Cog:** Deep work, studying, strategic planning, decision fatigue.
+    * **Emo:** Family dynamics, anxiety, excitement, frustration.
+    
+    **OUTPUT FORMAT (JSON):**
+    {
+        "reply": "Empathetic response string here.",
+        "summary": "5-word summary of the entry",
+        "tags": ["Tag1", "Tag2", "Tag3"],
+        "scores": { "bio": 5, "cog": 5, "emo": 5 },
+        "impact_prediction": "Prediction on HRV/Glucose/Insulin Resistance based on context."
+    }
     """
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    if "journal_history" not in st.session_state:
+        st.session_state.journal_history = []
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if message["role"] == "assistant" and "tags" in message:
-                st.markdown(message["content"])
-                st.caption("🔍 **Logged Details:**")
-                st.json(message["tags"], expanded=False)
-            else:
-                st.markdown(message["content"])
+    # Input Area
+    with st.form("journal_form", clear_on_submit=True):
+        text_input = st.text_area("Life Download:", placeholder="e.g. 'Stressed about work plan, but wife is home. Did home improvement all day.'")
+        submitted = st.form_submit_button("Analyze Load", type="primary")
+        
+        if submitted and text_input:
+            with st.spinner("Analyzing Life Load..."):
+                try:
+                    full_prompt = f"{extraction_prompt}\n\nUser Entry: {text_input}"
+                    response = model_json.generate_content(full_prompt)
+                    parsed_data = json.loads(response.text)
+                    
+                    # Add timestamp
+                    parsed_data["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    st.session_state.journal_history.insert(0, parsed_data) # Add to top
+                    
+                except Exception as e:
+                    logger.error(f"Journal analysis failed: {e}", exc_info=True)
+                    st.error("Analysis failed. Please try again.")
 
-    if prompt := st.chat_input("Log an event (e.g., 'Pump site itching, ate handful of pretzels, stressed')"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            try:
-                full_prompt = f"{extraction_prompt}\n\nUser Input: {prompt}"
-                response = model_json.generate_content(full_prompt)
-
-                parsed_data = json.loads(response.text)
-
-                reply_text = parsed_data.get("reply", "Context logged.")
-                extracted_tags = parsed_data.get("tags", {})
-
-                st.markdown(reply_text)
-                st.caption("🔍 **Logged Details:**")
-                st.json(extracted_tags, expanded=False)
-
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": reply_text,
-                    "tags": extracted_tags
-                })
-
-            except Exception as e:
-                logger.error(f"Event extraction failed: {e}", exc_info=True)
-                st.error("Oops! Something went wrong processing your input.")
+    # Display History
+    if st.session_state.journal_history:
+        latest_entry = st.session_state.journal_history[0]
+        
+        # 1. The Empathetic Reply
+        st.success(f"**Insight:** {latest_entry['reply']}")
+        
+        # 2. The Load Scoreboard
+        s_col1, s_col2, s_col3 = st.columns(3)
+        scores = latest_entry.get("scores", {"bio":0, "cog":0, "emo":0})
+        
+        with s_col1:
+            st.metric("🧬 Biological Load", f"{scores['bio']}/10", delta="Physical Stress" if scores['bio'] > 6 else None, delta_color="inverse")
+        with s_col2:
+            st.metric("🧠 Cognitive Load", f"{scores['cog']}/10", delta="Focus Strain" if scores['cog'] > 6 else None, delta_color="inverse")
+        with s_col3:
+            st.metric("❤️ Emotional Load", f"{scores['emo']}/10", delta="Allostatic Load" if scores['emo'] > 6 else None, delta_color="inverse")
+            
+        # 3. Context Tags & Prediction
+        st.markdown(f"**🏷️ Drivers:** {' '.join([f'`{t}`' for t in latest_entry.get('tags', [])])}")
+        st.info(f"**📉 Physiological Prediction:** {latest_entry.get('impact_prediction', 'No prediction available.')}")
+        
+        st.divider()
+        
+        # Previous Entries Expander
+        with st.expander("📜 Previous Downloads"):
+            for entry in st.session_state.journal_history[1:]:
+                st.markdown(f"**{entry['timestamp']}** - *{entry.get('summary', 'Log')}*")
+                st.caption(f"Bio: {entry['scores']['bio']} | Cog: {entry['scores']['cog']} | Emo: {entry['scores']['emo']}")
+                st.markdown("---")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
