@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 # 1. PAGE SETUP & THEME
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="TLDH | Total Life Download Hub", page_icon="🧬", layout="wide")
+st.set_page_config(page_title="My Health Hub", page_icon="🧬", layout="wide")
 styles.apply_theme()  # Injects auto-switching CSS variables
 
 # -----------------------------------------------------------------------------
@@ -74,10 +74,10 @@ with st.sidebar:
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
 try:
-    with st.spinner("Syncing Bio-Telemetry..."):
+    with st.spinner("Syncing Health Data..."):
         raw_data = logic.fetch_health_data()
         # The risk calculator now returns the MODIFIED data frame as the first return value
-        full_data, status, reason = logic.calc_glycemic_risk(raw_data, current_context)
+        full_data, status, color_hex, reason = logic.calc_glycemic_risk(raw_data, current_context)
         latest = full_data.iloc[-1]
 except Exception as e:
     logger.error(f"Data loading failed: {e}", exc_info=True)
@@ -89,15 +89,16 @@ except Exception as e:
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
+safe_color_hex = html.escape(str(color_hex))
 
 st.markdown(f"""
     <div style="padding-bottom: 20px;">
-        <span style="font-size: 28px; font-weight: bold; color: var(--text-primary);">Total Life Download Hub</span><br>
-        <span style="color: var(--text-secondary);">Agentic Risk Management Engine</span>
+        <span style="font-size: 28px; font-weight: bold; color: var(--text-primary);">Smart Health Companion</span><br>
+        <span style="color: var(--text-secondary);">Daily Wellness Tracker</span>
     </div>
     <div style="margin-bottom: 20px;">
         <span style="font-weight: 600; color: var(--text-secondary);">Current Status: </span>
-        <div class="gov-pill">{safe_status}</div>
+        <div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000;">{safe_status}</div>
         <div style="margin-top: 5px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
     </div>
 """, unsafe_allow_html=True)
@@ -177,8 +178,8 @@ elif st.session_state.active_view == "Schedule":
 
 # --- VIEW C: ASSISTANT ---
 elif st.session_state.active_view == "Assistant":
-    st.markdown("### 🧬 Total Life Download Engine")
-    st.caption("Log unstructured thoughts to track Biological, Cognitive, and Emotional load.")
+    st.markdown("### 🧬 Smart Health Companion")
+    st.caption("Log unstructured thoughts to track Physical, Mental, and Emotional load.")
 
     extraction_prompt = """
     **ROLE:** You are the Total Life Download Analyst. 
@@ -240,11 +241,11 @@ elif st.session_state.active_view == "Assistant":
         scores = latest_entry.get("scores", {"bio":0, "cog":0, "emo":0})
         
         with s_col1:
-            st.metric("🧬 Biological Load", f"{scores['bio']}/10", delta="Physical Stress" if scores['bio'] > 6 else None, delta_color="inverse")
+            st.metric("🧬 Physical Load", f"{scores['bio']}/10", delta="Physical Stress" if scores['bio'] > 6 else None, delta_color="inverse")
         with s_col2:
-            st.metric("🧠 Cognitive Load", f"{scores['cog']}/10", delta="Focus Strain" if scores['cog'] > 6 else None, delta_color="inverse")
+            st.metric("🧠 Mental Load", f"{scores['cog']}/10", delta="Focus Strain" if scores['cog'] > 6 else None, delta_color="inverse")
         with s_col3:
-            st.metric("❤️ Emotional Load", f"{scores['emo']}/10", delta="Allostatic Load" if scores['emo'] > 6 else None, delta_color="inverse")
+            st.metric("❤️ Emotional Load", f"{scores['emo']}/10", delta="Emotional Strain" if scores['emo'] > 6 else None, delta_color="inverse")
             
         tags = latest_entry.get('tags', [])
         st.markdown(f"**🏷️ Drivers:** {' '.join([f'`{t}`' for t in tags])}")
