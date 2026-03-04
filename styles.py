@@ -112,8 +112,6 @@ def apply_theme():
         .gov-pill {
             padding: 8px 24px;
             border-radius: 30px;
-            color: var(--bg-color);
-            background-color: var(--text-primary);
             font-weight: 800;
             display: inline-block;
             margin-top: 5px;

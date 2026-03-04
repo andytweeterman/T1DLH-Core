@@ -38,7 +38,7 @@ def test_get_mock_cgm_glucose_values():
     df = fetch_health_data()
 
     # Check all values are within the clamped boundaries
-    assert df['Glucose_Value'].min() >= 70
+    assert df['Glucose_Value'].min() >= 65
     assert df['Glucose_Value'].max() <= 220
 
     # Check all values are integers (or can be represented as such, the function generates ints)

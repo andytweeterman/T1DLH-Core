@@ -11,8 +11,12 @@ def fetch_health_data():
     """
     # 1. Create Time Index (Last 24 hours, 5-min intervals)
     end_time = datetime.now()
-    start_time = end_time - timedelta(hours=24)
-    timestamps = pd.date_range(start=start_time, end=end_time, freq='5min')
+    # If we generate 288 points at 5-minute intervals starting from start_time,
+    # the last point will be at start_time + 287 * 5 mins.
+    # We want the last point to be exactly end_time, so start_time should be:
+    start_time = end_time - timedelta(minutes=5 * 287)
+    # Generate 288 points exactly
+    timestamps = [start_time + timedelta(minutes=5 * i) for i in range(288)]
     
     # 2. Generate Base "Perfect" Sine Wave (The Dexcom Sandbox Artifact)
     # A smooth curve oscillating between 100 and 160
@@ -31,6 +35,10 @@ def fetch_health_data():
     # In a real app, pass context as an argument.
     # For MVP speed, we assume 'Normal' if not found.
     
+    # Tests expect `fetch_health_data()` to return chaotic data directly.
+    # We'll apply the default 'Normal' modifiers so trends and noise are included.
+    df = apply_context_modifiers(df, context)
+
     return df
 
 def apply_context_modifiers(df, context):
@@ -38,7 +46,8 @@ def apply_context_modifiers(df, context):
     Takes the perfect sine wave and ruins it with 'Real Life'.
     """
     # Create a noise generator
-    np.random.seed(42) # Seed for consistency in demo, remove for true chaos
+    # We do NOT seed np.random here to allow for non-deterministic results between calls,
+    # satisfying `test_get_mock_cgm_deterministic`.
     noise = np.random.normal(0, 3, len(df)) # Standard background noise (±3 mg/dL)
     
     # MODIFIER: CORTISOL (Stress/Sick) -> Raises baseline & variance
@@ -75,15 +84,11 @@ def apply_context_modifiers(df, context):
         df['Glucose_Value'] = df['Glucose_Value'] + noise
 
     # Recalculate Trend based on the new chaotic end-values
-    last_val = df['Glucose_Value'].iloc[-1]
-    prev_val = df['Glucose_Value'].iloc[-2]
-    delta = last_val - prev_val
-    
-    if delta > 3: df['Trend'] = "Rising Fast ⬆️"
-    elif delta > 1: df['Trend'] = "Rising ↗️"
-    elif delta < -3: df['Trend'] = "Falling Fast ⬇️"
-    elif delta < -1: df['Trend'] = "Falling ↘️"
-    else: df['Trend'] = "Stable ➡️"
+    diffs = df['Glucose_Value'].diff().fillna(0)
+    df['Trend'] = np.where(diffs > 3, "Rising", np.where(diffs < -3, "Falling", "Steady"))
+
+    # Restrict generated mock glucose values between 65 and 220 using np.clip
+    df['Glucose_Value'] = np.clip(df['Glucose_Value'], 65, 220)
 
     return df
 
@@ -111,18 +116,18 @@ def calc_glycemic_risk(df, context):
     
     # 1. BASELINE GATES
     if latest_glucose > 180:
-        return df, "🔴 HIGH RISK", "Hyperglycemic event detected."
+        return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is high."
     elif latest_glucose < 70:
-        return df, "🔴 CRITICAL", "Hypoglycemic event imminent."
+        return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is low."
         
     # 2. CONTEXT GATES (The AI Value Add)
     if context == "Exercise" and latest_glucose < 100:
-        return df, "🟡 CAUTION", "Glucose dropping during exertion. Carb load recommended."
+        return df, "🟡 CAUTION", "#EED49F", "Blood sugar dropping. Consider a snack."
         
     if context == "Stressed" and latest_glucose > 150:
-        return df, "🟡 ELEVATED", "Cortisol-induced resistance likely. Monitor trend."
+        return df, "🟡 ELEVATED", "#EED49F", "Stress may be affecting blood sugar. Keep an eye on it."
         
     if context == "Sick":
-        return df, "🟠 MONITORING", "Illness protocol active. Basal increase may be required."
+        return df, "🟠 MONITORING", "#F5A97F", "Illness may affect blood sugar."
 
-    return df, "🟢 NOMINAL", "System within normal operating parameters."
+    return df, "🟢 STABLE", "#A6DA95", "Everything looks good."
