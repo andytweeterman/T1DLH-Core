@@ -88,12 +88,14 @@ except Exception as e:
     st.error("Oops! Something went wrong loading your health data.")
     st.stop()
 
-# -----------------------------------------------------------------------------
-# 5. HEADER UI (Branded)
+## -----------------------------------------------------------------------------
+# 5. HEADER UI (Branded & Updated Layout)
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
 safe_color_hex = html.escape(str(color_hex))
+# Escape the context variable for safety
+safe_context = html.escape(str(current_context))
 
 # Inject Logo & Title layout
 col_logo, col_text = st.columns([1, 8])
@@ -101,7 +103,8 @@ with col_logo:
     try:
         st.image("assets/tldh_logo.png", width=80)
     except Exception:
-        st.error("Logo missing")
+        # Fallback if logo is missing or path is wrong
+        st.warning("🧩") 
 
 with col_text:
     st.markdown(f"""
@@ -111,11 +114,18 @@ with col_text:
         </div>
     """, unsafe_allow_html=True)
 
+# UPDATED LAYOUT: Horizontal Pills
 st.markdown(f"""
     <div style="margin-top: 25px; margin-bottom: 20px;">
-        <span style="font-weight: 600; color: var(--text-secondary);">Current Status: </span>
-        <div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000;">{safe_status}</div>
-        <div style="margin-top: 5px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
+        <span style="font-weight: 600; color: var(--text-secondary); margin-right: 15px;">Current Status:</span>
+        <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; margin: 0;">{safe_status}</div>
+            
+            <div class="gov-pill" style="background: var(--accent-gradient); color: #FFFFFF; margin: 0; font-size: 0.8rem; padding: 6px 18px;">
+                Context: {safe_context}
+            </div>
+        </div>
+        <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
     </div>
 """, unsafe_allow_html=True)
 
