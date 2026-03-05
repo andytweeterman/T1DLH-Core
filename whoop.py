@@ -4,9 +4,9 @@ import base64
 from urllib.parse import urlencode
 
 # Load credentials from Streamlit secrets
-CLIENT_ID = st.secrets["085221b6-b196-4512-b3e8-f3356a010a56"]
-CLIENT_SECRET = st.secrets["ff84d1fa1a7b04090be8cad68ab818c2296a6cd30317767864dc4bf4eda521a4"]
-REDIRECT_URI = st.secrets["https://t1dlhagentic.streamlit.app/"]
+CLIENT_ID = st.secrets["WHOOP_CLIENT_ID"]
+CLIENT_SECRET = st.secrets["WHOOP_CLIENT_SECRET"]
+REDIRECT_URI = st.secrets["WHOOP_REDIRECT_URI"]
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
