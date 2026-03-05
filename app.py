@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 # 1. PAGE SETUP & THEME
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="TLDH | Total Life Download", page_icon="🧬", layout="wide")
+st.set_page_config(
+    page_title="TLDH | Total Life Download Hub", 
+    page_icon="assets/tldh_logo.png", # Points to your image
+    layout="wide"
+)
 styles.apply_theme()  # Injects auto-switching CSS variables
 
 # -----------------------------------------------------------------------------
@@ -50,13 +54,24 @@ except Exception as e:
 # -----------------------------------------------------------------------------
 # 3. CONTEXT SIDEBAR
 # -----------------------------------------------------------------------------
+# We now offer a popover for the main screen, in addition to the sidebar
+with st.popover("⚙️ Current Context"):
+    current_context = st.radio(
+        "Select Activity",
+        ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
+        index=0
+    )
+
+# Optionally, keep the sidebar as a secondary redundancy
 with st.sidebar:
     st.header("Context Settings")
-    current_context = st.selectbox(
+    current_context_sidebar = st.selectbox(
         "Current Activity",
         ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
         index=0
     )
+    # Sync them up
+    current_context = current_context_sidebar
     st.markdown("---")
     st.caption(f"**AI Engine:**\n{model_status}")
 
