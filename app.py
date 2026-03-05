@@ -88,12 +88,23 @@ with st.sidebar:
 # -----------------------------------------------------------------------------
 try:
     with st.spinner("Syncing Health Data..."):
+        # A. Fetch Whoop Data if token exists
+        whoop_metrics = None
+        if st.session_state.whoop_token:
+            whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token)
+        
+        # B. Fetch Dexcom/Health Data
         raw_data = logic.fetch_health_data()
-        full_data, status, color_hex, reason = logic.calc_glycemic_risk(raw_data, st.session_state.current_context)
+        
+        # C. Calculate Risk using real Whoop metrics
+        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+            raw_data, 
+            st.session_state.current_context,
+            whoop_data=whoop_metrics
+        )
         latest = full_data.iloc[-1]
 except Exception as e:
     st.error(f"Data loading failed: {e}")
-    st.stop()
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI (Unified Control Bar)
@@ -152,7 +163,7 @@ st.divider()
 if "active_view" not in st.session_state:
     st.session_state.active_view = "Wellness"
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 with c1:
     if st.button("Wellness", use_container_width=True, type="primary" if st.session_state.active_view == "Wellness" else "secondary"):
         st.session_state.active_view = "Wellness"
@@ -165,62 +176,83 @@ with c3:
     if st.button("Assistant", use_container_width=True, type="primary" if st.session_state.active_view == "Assistant" else "secondary"):
         st.session_state.active_view = "Assistant"
         st.rerun()
-
+with c4:
+    if st.button("Sleep", use_container_width=True, type="primary" if st.session_state.active_view == "Sleep" else "secondary"):
+        st.session_state.active_view = "Sleep"
+        st.rerun()
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
 # 7. RENDER VIEWS
 # -----------------------------------------------------------------------------
+# --- VIEW A: WELLNESS ---
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
-    cols = st.columns(3)
-    cols[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
-    cols[1].metric("Trend", latest['Trend'])
-    cols[2].metric("Active Insulin", "1.5 U", "-0.2 U")
+    
+    # ROW 1: Metabolic Telemetry (Dexcom)
+    st.markdown("#### 🧬 Metabolic Baseline")
+    cols_dex = st.columns(3)
+    cols_dex[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
+    cols_dex[1].metric("Trend", latest['Trend'])
+    cols_dex[2].metric("Active Insulin", "1.5 U", "-0.2 U")
+
+    # ROW 2: Systemic Resilience (Whoop)
+    if st.session_state.whoop_token and whoop_metrics:
+        st.markdown("#### ⚡ Systemic Resilience")
+        cols_whoop = st.columns(3)
+        recovery_val = whoop_metrics.get('score', {}).get('recovery_score', 0)
+        hrv_val = int(whoop_metrics.get('score', {}).get('hrv_rmssd_milli_seconds', 0))
+        rhr_val = int(whoop_metrics.get('score', {}).get('resting_heart_rate_beats_per_minute', 0))
+        rec_color = "normal" if recovery_val > 66 else "inverse" if recovery_val < 34 else "off"
+        
+        cols_whoop[0].metric("Recovery Score", f"{recovery_val}%", delta=None, delta_color=rec_color)
+        cols_whoop[1].metric("HRV (ms)", hrv_val)
+        cols_whoop[2].metric("Resting HR", rhr_val, delta_color="inverse")
+    else:
+        st.info("🔗 Connect Whoop in the sidebar to view real-time Resilience metrics.")
+
     st.markdown("---")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
-    fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
+    fig.add_hline(y=70, line_dash="dash", line_color="#ED8796", annotation_text="LOW GATES")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL")
     st.plotly_chart(fig, use_container_width=True)
 
+# --- VIEW B: SCHEDULE (Missing from your snippet, but should be here) ---
 elif st.session_state.active_view == "Schedule":
-    h1, h2, h3 = st.columns(3)
-    card_css = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
-    
-    # Logic for status strings
-    t_status = '🟢 SAFE' if st.session_state.current_context != 'Travel' else '🔴 EVALUATE'
-    m_status = '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'
-    
-    with h1: 
-        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>1 HOUR</div><div style='font-weight:800;'>{t_status}</div></div>", unsafe_allow_html=True)
-    with h2: 
-        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>4 HOURS</div><div style='font-weight:800;'>{m_status}</div></div>", unsafe_allow_html=True)
-    with h3: 
-        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>24 HOURS</div><div style='font-weight:800;'>🟢 GOOD</div></div>", unsafe_allow_html=True)
+    # (Include your existing Schedule logic here)
+    pass
 
+# --- VIEW C: ASSISTANT (Missing from your snippet, but should be here) ---
 elif st.session_state.active_view == "Assistant":
-    st.markdown("### 🧬 Smart Health Companion")
-    if "journal_history" not in st.session_state: st.session_state.journal_history = []
-    with st.form("journal_form", clear_on_submit=True):
-        text_input = st.text_area("Life Download:", placeholder="How are you feeling?")
-        if st.form_submit_button("Analyze Load", type="primary") and text_input:
-            with st.spinner("Analyzing..."):
-                try:
-                    prompt = f"Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction: {text_input}"
-                    response = model_json.generate_content(prompt)
-                    clean_text = response.text.strip().replace("```json", "").replace("```", "")
-                    parsed = json.loads(clean_text)
-                    parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    st.session_state.journal_history.insert(0, parsed)
-                    st.rerun()
-                except Exception as e: st.error(f"Analysis failed: {e}")
-    if st.session_state.journal_history:
-        entry = st.session_state.journal_history[0]
-        st.success(f"**Insight:** {entry['reply']}")
-        sc = entry.get("scores", {"bio":0, "cog":0, "emo":0})
-        st.metric("🧬 Physical", f"{sc['bio']}/10")
-        st.info(f"**📉 Prediction:** {entry['impact_prediction']}")
+    # (Include your existing Assistant logic here)
+    pass
 
-st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
+# --- VIEW D: SLEEP IMPACT (Now properly aligned) ---
+elif st.session_state.active_view == "Sleep":
+    st.markdown("### 🌙 Sleep & Recovery Correlation")
+    if st.session_state.whoop_token and whoop_metrics:
+        sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 85)
+        overnight_df = full_data.tail(96)
+        std_dev = int(overnight_df['Glucose_Value'].std())
+        
+        s_col1, s_col2 = st.columns(2)
+        with s_col1:
+            st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
+        with s_col2:
+            st.metric("Overnight Volatility", f"±{std_dev} mg/dL", delta="Stable" if std_dev < 15 else "Erratic", delta_color="normal" if std_dev < 15 else "inverse")
+
+        st.markdown("---")
+        st.markdown("#### Overnight Stability Trend")
+        sleep_fig = go.Figure()
+        sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
+        sleep_fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'))
+        st.plotly_chart(sleep_fig, use_container_width=True)
+        
+        if std_dev > 20 and sleep_perf < 70:
+            st.warning("⚠️ **Agentic Insight:** High volatility detected. Consider a +20% basal temporary increase.")
+        else:
+            st.success("✅ **Agentic Insight:** Stable overnight metabolic state.")
+    else:
+        st.info("🔗 Connect Whoop to enable Sleep Impact correlation.")

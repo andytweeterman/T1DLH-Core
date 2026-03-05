@@ -105,22 +105,36 @@ def apply_context_modifiers(df, context):
 # and let app.py call the modifier.
 # ---------------------------------------------------------
 
-def calc_glycemic_risk(df, context):
+def calc_glycemic_risk(df, context, whoop_data=None):
     """
-    The ERM Engine. Calculates Risk Score based on Chaos Data.
+    The ERM Engine. Calculates Risk Score based on Chaos Data and real-time biometrics.
     """
     # Apply the chaos modifiers FIRST, so the risk calc sees the 'Real' data
     df = apply_context_modifiers(df, context)
     
     latest_glucose = df['Glucose_Value'].iloc[-1]
     
-    # 1. BASELINE GATES
+    # 1. BASELINE GATES (Safety First)
     if latest_glucose > 180:
         return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is high."
     elif latest_glucose < 70:
         return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is low."
+
+    # 2. WHOOP BIOMETRIC ANALYSIS (Leading Indicators)
+    whoop_status = ""
+    whoop_modifier = 1.0
+    
+    if whoop_data:
+        # Extract the recovery score from the Whoop API response object
+        # Note: The Whoop API returns recovery_score as an integer 0-100
+        score = whoop_data.get('score', {}).get('recovery_score', 100)
+        whoop_modifier, whoop_status = get_whoop_risk_modifier(score)
         
-    # 2. CONTEXT GATES (The AI Value Add)
+    # 3. CONTEXT GATES (The AI Value Add)
+    # If Whoop is in the Red, we escalate "Normal" or "Stressed" states to Caution
+    if whoop_modifier >= 1.4:
+        return df, "🔴 CAUTION", "#ED8796", f"{whoop_status} High physiological risk detected."
+
     if context == "Exercise" and latest_glucose < 100:
         return df, "🟡 CAUTION", "#EED49F", "Blood sugar dropping. Consider a snack."
         
@@ -128,6 +142,25 @@ def calc_glycemic_risk(df, context):
         return df, "🟡 ELEVATED", "#EED49F", "Stress may be affecting blood sugar. Keep an eye on it."
         
     if context == "Sick":
-        return df, "🟠 MONITORING", "#F5A97F", "Illness may affect blood sugar."
+        return df, "🟠 MONITORING", "#F5A97F", "Illness may affect physiological baseline."
 
-    return df, "🟢 STABLE", "#A6DA95", "Everything looks good."
+    # 4. FINAL RESILIENCE CHECK
+    # Even if glucose is "Normal", if Whoop is Yellow, we provide a proactive heads-up
+    if whoop_modifier > 1.0:
+         return df, "🟡 MONITORING", "#EED49F", f"{whoop_status} Baseline resilience is lowered."
+
+    return df, "🟢 STABLE", "#A6DA95", f"{whoop_status} Everything looks good."
+
+def get_whoop_risk_modifier(recovery_score):
+    """
+    Translates Whoop Recovery (0-100) into an ERM Risk Modifier.
+    RED (0-33): Severe strain/Reduced sensitivity.
+    YELLOW (34-66): Moderate strain/Baseline noise.
+    GREEN (67-100): High resilience.
+    """
+    if recovery_score < 34:
+        return 1.5, "WHOOP: RED RECOVERY."
+    elif recovery_score < 67:
+        return 1.2, "WHOOP: YELLOW RECOVERY."
+    else:
+        return 1.0, "WHOOP: GREEN RECOVERY."
