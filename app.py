@@ -185,18 +185,20 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 # 7. RENDER VIEWS
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 7. RENDER VIEWS
+# -----------------------------------------------------------------------------
+
 # --- VIEW A: WELLNESS ---
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     
-    # ROW 1: Metabolic Telemetry (Dexcom)
     st.markdown("#### 🧬 Metabolic Baseline")
     cols_dex = st.columns(3)
     cols_dex[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
     cols_dex[1].metric("Trend", latest['Trend'])
     cols_dex[2].metric("Active Insulin", "1.5 U", "-0.2 U")
 
-    # ROW 2: Systemic Resilience (Whoop)
     if st.session_state.whoop_token and whoop_metrics:
         st.markdown("#### ⚡ Systemic Resilience")
         cols_whoop = st.columns(3)
@@ -219,17 +221,46 @@ if st.session_state.active_view == "Wellness":
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- VIEW B: SCHEDULE (Missing from your snippet, but should be here) ---
+# --- VIEW B: SCHEDULE ---
 elif st.session_state.active_view == "Schedule":
-    # (Include your existing Schedule logic here)
-    pass
+    h1, h2, h3 = st.columns(3)
+    card_css = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
+    
+    t_status = '🟢 SAFE' if st.session_state.current_context != 'Travel' else '🔴 EVALUATE'
+    m_status = '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'
+    
+    with h1: 
+        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>1 HOUR</div><div style='font-weight:800;'>{t_status}</div></div>", unsafe_allow_html=True)
+    with h2: 
+        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>4 HOURS</div><div style='font-weight:800;'>{m_status}</div></div>", unsafe_allow_html=True)
+    with h3: 
+        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>24 HOURS</div><div style='font-weight:800;'>🟢 GOOD</div></div>", unsafe_allow_html=True)
 
-# --- VIEW C: ASSISTANT (Missing from your snippet, but should be here) ---
+# --- VIEW C: ASSISTANT ---
 elif st.session_state.active_view == "Assistant":
-    # (Include your existing Assistant logic here)
-    pass
+    st.markdown("### 🧬 Smart Health Companion")
+    if "journal_history" not in st.session_state: st.session_state.journal_history = []
+    with st.form("journal_form", clear_on_submit=True):
+        text_input = st.text_area("Life Download:", placeholder="How are you feeling?")
+        if st.form_submit_button("Analyze Load", type="primary") and text_input:
+            with st.spinner("Analyzing..."):
+                try:
+                    prompt = f"Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction: {text_input}"
+                    response = model_json.generate_content(prompt)
+                    clean_text = response.text.strip().replace("```json", "").replace("```", "")
+                    parsed = json.loads(clean_text)
+                    parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    st.session_state.journal_history.insert(0, parsed)
+                    st.rerun()
+                except Exception as e: st.error(f"Analysis failed: {e}")
+    if st.session_state.journal_history:
+        entry = st.session_state.journal_history[0]
+        st.success(f"**Insight:** {entry['reply']}")
+        sc = entry.get("scores", {"bio":0, "cog":0, "emo":0})
+        st.metric("🧬 Physical", f"{sc['bio']}/10")
+        st.info(f"**📉 Prediction:** {entry['impact_prediction']}")
 
-# --- VIEW D: SLEEP IMPACT (Now properly aligned) ---
+# --- VIEW D: SLEEP IMPACT ---
 elif st.session_state.active_view == "Sleep":
     st.markdown("### 🌙 Sleep & Recovery Correlation")
     if st.session_state.whoop_token and whoop_metrics:
@@ -256,3 +287,5 @@ elif st.session_state.active_view == "Sleep":
             st.success("✅ **Agentic Insight:** Stable overnight metabolic state.")
     else:
         st.info("🔗 Connect Whoop to enable Sleep Impact correlation.")
+
+st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
