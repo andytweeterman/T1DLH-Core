@@ -162,5 +162,40 @@ if st.session_state.active_view == "Wellness":
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3 = st.columns(3)
-    card = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
-    with h1: st.markdown(f"<div style='{card}'><div style='color:var(--text-secondary);
+    card_css = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
+    
+    # Logic for status strings
+    t_status = '🟢 SAFE' if st.session_state.current_context != 'Travel' else '🔴 EVALUATE'
+    m_status = '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'
+    
+    with h1: 
+        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>1 HOUR</div><div style='font-weight:800;'>{t_status}</div></div>", unsafe_allow_html=True)
+    with h2: 
+        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>4 HOURS</div><div style='font-weight:800;'>{m_status}</div></div>", unsafe_allow_html=True)
+    with h3: 
+        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>24 HOURS</div><div style='font-weight:800;'>🟢 GOOD</div></div>", unsafe_allow_html=True)
+
+elif st.session_state.active_view == "Assistant":
+    st.markdown("### 🧬 Smart Health Companion")
+    if "journal_history" not in st.session_state: st.session_state.journal_history = []
+    with st.form("journal_form", clear_on_submit=True):
+        text_input = st.text_area("Life Download:", placeholder="How are you feeling?")
+        if st.form_submit_button("Analyze Load", type="primary") and text_input:
+            with st.spinner("Analyzing..."):
+                try:
+                    prompt = f"Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction: {text_input}"
+                    response = model_json.generate_content(prompt)
+                    clean_text = response.text.strip().replace("```json", "").replace("```", "")
+                    parsed = json.loads(clean_text)
+                    parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    st.session_state.journal_history.insert(0, parsed)
+                    st.rerun()
+                except Exception as e: st.error(f"Analysis failed: {e}")
+    if st.session_state.journal_history:
+        entry = st.session_state.journal_history[0]
+        st.success(f"**Insight:** {entry['reply']}")
+        sc = entry.get("scores", {"bio":0, "cog":0, "emo":0})
+        st.metric("🧬 Physical", f"{sc['bio']}/10")
+        st.info(f"**📉 Prediction:** {entry['impact_prediction']}")
+
+st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
