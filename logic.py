@@ -113,10 +113,14 @@ def calc_glycemic_risk(df, context, whoop_data=None):
     df = apply_context_modifiers(df, context)
     
     latest_glucose = df['Glucose_Value'].iloc[-1]
+    latest_trend = df['Trend'].iloc[-1]
     
     # 1. BASELINE GATES (Safety First)
     if latest_glucose > 180:
-        return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is high."
+        if latest_trend == "Falling":
+            return df, "🟡 MONITORING", "#EED49F", "Blood sugar is high but falling. Monitoring to prevent insulin stacking."
+        else:
+            return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is high."
     elif latest_glucose < 70:
         return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is low."
 
