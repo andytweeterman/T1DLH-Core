@@ -52,28 +52,34 @@ except Exception as e:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 3. CONTEXT SIDEBAR
+# 3. CONTEXT SETTINGS (Synced State)
 # -----------------------------------------------------------------------------
-# We now offer a popover for the main screen, in addition to the sidebar
-with st.popover("⚙️ Current Context"):
-    current_context = st.radio(
-        "Select Activity",
-        ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
-        index=0
-    )
+if "current_context" not in st.session_state:
+    st.session_state.current_context = "Normal"
 
-# Optionally, keep the sidebar as a secondary redundancy
-with st.sidebar:
-    st.header("Context Settings")
-    current_context_sidebar = st.selectbox(
+# Mobile-friendly Popover
+with st.popover("⚙️ Settings"):
+    st.session_state.current_context = st.radio(
         "Current Activity",
         ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
-        index=0
+        index=["Normal", "Stressed", "Sick", "Exercise", "Travel"].index(st.session_state.current_context),
+        key="main_context"
     )
-    # Sync them up
-    current_context = current_context_sidebar
+
+# Sidebar Sync
+with st.sidebar:
+    st.header("Context Settings")
+    st.session_state.current_context = st.selectbox(
+        "Switch Context",
+        ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
+        index=["Normal", "Stressed", "Sick", "Exercise", "Travel"].index(st.session_state.current_context),
+        key="sidebar_context"
+    )
     st.markdown("---")
     st.caption(f"**AI Engine:**\n{model_status}")
+
+# Unified variable for the rest of the script
+current_context = st.session_state.current_context
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
@@ -87,24 +93,22 @@ except Exception as e:
     logger.error(f"Data loading failed: {e}", exc_info=True)
     st.error("Oops! Something went wrong loading your health data.")
     st.stop()
-
-## -----------------------------------------------------------------------------
-# 5. HEADER UI (Branded & Updated Layout)
+    
+# -----------------------------------------------------------------------------
+# 5. HEADER UI (Branded & Refined Spacing)
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
 safe_color_hex = html.escape(str(color_hex))
-# Escape the context variable for safety
 safe_context = html.escape(str(current_context))
 
-# Inject Logo & Title layout
+# Title & Logo
 col_logo, col_text = st.columns([1, 8])
 with col_logo:
     try:
         st.image("assets/tldh_logo.png", width=80)
-    except Exception:
-        # Fallback if logo is missing or path is wrong
-        st.warning("🧩") 
+    except:
+        st.write("🧬")
 
 with col_text:
     st.markdown(f"""
@@ -114,18 +118,19 @@ with col_text:
         </div>
     """, unsafe_allow_html=True)
 
-# UPDATED LAYOUT: Horizontal Pills
+# THE PILL BAR
 st.markdown(f"""
-    <div style="margin-top: 25px; margin-bottom: 20px;">
-        <span style="font-weight: 600; color: var(--text-secondary); margin-right: 15px;">Current Status:</span>
-        <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
-            <div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; margin: 0;">{safe_status}</div>
-            
-            <div class="gov-pill" style="background: var(--accent-gradient); color: #FFFFFF; margin: 0; font-size: 0.8rem; padding: 6px 18px;">
-                Context: {safe_context}
+    <div style="margin-top: 30px; margin-bottom: 25px; padding: 15px; background: rgba(128,128,128,0.05); border-radius: 15px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 15px;">
+            <span style="font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;">Live Status</span>
+            <div style="display: flex; gap: 10px;">
+                <div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; margin: 0; min-width: 100px; text-align: center;">{safe_status}</div>
+                <div class="gov-pill" style="background: var(--accent-gradient); color: #FFFFFF; margin: 0; padding: 8px 20px; font-size: 0.8rem;">CONTEXT: {safe_context}</div>
             </div>
         </div>
-        <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
+        <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary); font-style: italic; border-left: 3px solid var(--accent-start); padding-left: 10px;">
+            Analysis: {safe_reason}
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
