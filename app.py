@@ -51,35 +51,19 @@ except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}")
     st.stop()
 
-# -----------------------------------------------------------------------------
-# 3. CONTEXT SETTINGS (Synced State)
+# ----------------------------------------------------------------------------------------------------------------------------------------------------------
+# 3. CONTEXT STATE MANAGEMENT
 # -----------------------------------------------------------------------------
 if "current_context" not in st.session_state:
     st.session_state.current_context = "Normal"
 
-# Mobile-friendly Popover
-with st.popover("⚙️ Settings"):
-    st.session_state.current_context = st.radio(
-        "Current Activity",
-        ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
-        index=["Normal", "Stressed", "Sick", "Exercise", "Travel"].index(st.session_state.current_context),
-        key="main_context"
-    )
-
-# Sidebar Sync
+# Sidebar remains as a fallback/info panel
 with st.sidebar:
-    st.header("Context Settings")
-    st.session_state.current_context = st.selectbox(
-        "Switch Context",
-        ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
-        index=["Normal", "Stressed", "Sick", "Exercise", "Travel"].index(st.session_state.current_context),
-        key="sidebar_context"
-    )
-    st.markdown("---")
+    st.image("assets/tldh_logo.png", width=100)
+    st.header("System Monitor")
     st.caption(f"**AI Engine:**\n{model_status}")
-
-# Unified variable for the rest of the script
-current_context = st.session_state.current_context
+    st.divider()
+    st.info("The Hub correlates biological telemetry with lifestyle context to offload cognitive strain.")
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
@@ -93,16 +77,15 @@ except Exception as e:
     logger.error(f"Data loading failed: {e}", exc_info=True)
     st.error("Oops! Something went wrong loading your health data.")
     st.stop()
-    
 # -----------------------------------------------------------------------------
-# 5. HEADER UI (Branded & Refined Spacing)
+# 5. HEADER UI (Unified Control Bar)
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
 safe_color_hex = html.escape(str(color_hex))
-safe_context = html.escape(str(current_context))
+safe_context = html.escape(str(st.session_state.current_context))
 
-# Title & Logo
+# Title & Logo Row
 col_logo, col_text = st.columns([1, 8])
 with col_logo:
     try:
@@ -118,14 +101,27 @@ with col_text:
         </div>
     """, unsafe_allow_html=True)
 
-# THE PILL BAR
+# THE UNIFIED CONTROL BOX
 st.markdown(f"""
-    <div style="margin-top: 30px; margin-bottom: 25px; padding: 15px; background: rgba(128,128,128,0.05); border-radius: 15px;">
+    <div style="margin-top: 30px; padding: 15px; background: rgba(128,128,128,0.05); border-radius: 15px; border: 1px solid rgba(128,128,128,0.1);">
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 15px;">
             <span style="font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;">Live Status</span>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
                 <div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; margin: 0; min-width: 100px; text-align: center;">{safe_status}</div>
-                <div class="gov-pill" style="background: var(--accent-gradient); color: #FFFFFF; margin: 0; padding: 8px 20px; font-size: 0.8rem;">CONTEXT: {safe_context}</div>
+""", unsafe_allow_html=True)
+
+# 2. THE SETTINGS PILL (Interactive Popover)
+# This button now sits inside the Live Status flex row
+with st.popover(f"CONTEXT: {safe_context.upper()}", use_container_width=False):
+    st.session_state.current_context = st.radio(
+        "Update Activity Context:",
+        ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
+        index=["Normal", "Stressed", "Sick", "Exercise", "Travel"].index(st.session_state.current_context)
+    )
+    if st.button("Apply Changes"):
+        st.rerun()
+
+st.markdown(f"""
             </div>
         </div>
         <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary); font-style: italic; border-left: 3px solid var(--accent-start); padding-left: 10px;">
