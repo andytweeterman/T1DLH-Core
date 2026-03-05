@@ -9,27 +9,39 @@ def apply_theme():
         footer {visibility: hidden;}
         .stDeployButton {display:none;}
 
-        @import url('[https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap)');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
 
         :root {
-            --bg-color: #FFFFFF;
-            --card-bg: #F0F2F6;
-            --text-primary: #000000;
-            --text-secondary: #555555;
-            --accent: #0055AA;
-            --border: #E0E0E0;
-            --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+            /* Sleek Light Theme */
+            --bg-color: #F8F9FA;
+            --card-bg: #FFFFFF;
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            
+            /* The Option 2 Logo Gradient */
+            --accent-start: #8A2BE2; /* Deep Purple */
+            --accent-end: #4169E1;   /* Royal Blue */
+            --accent-gradient: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+            
+            --border: #E5E7EB;
+            --card-shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
         }
 
         @media (prefers-color-scheme: dark) {
             :root {
-                --bg-color: #24273A;
-                --card-bg: #363A4F;
-                --text-primary: #CAD3F5;
-                --text-secondary: #A5ADCB;
-                --accent: #8AADF4;
-                --border: #494D64;
-                --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+                /* Deep Dark Theme matching the logo's modern aesthetic */
+                --bg-color: #0F172A;
+                --card-bg: #1E293B;
+                --text-primary: #F8FAFC;
+                --text-secondary: #94A3B8;
+                
+                /* Brighter gradient for dark mode pop */
+                --accent-start: #A855F7; 
+                --accent-end: #3B82F6;
+                --accent-gradient: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+                
+                --border: #334155;
+                --card-shadow: 0 10px 40px -10px rgba(0,0,0,0.4);
             }
         }
 
@@ -46,8 +58,8 @@ def apply_theme():
         
         /* 1. PRIMARY BUTTONS (Submit & Active Tabs) */
         button[kind="primary"], div.stButton > button[kind="primary"] {
-            background-color: var(--accent) !important;
-            color: #FFFFFF !important;  /* FORCE WHITE TEXT */
+            background: var(--accent-gradient) !important; /* APPLIED BRAND GRADIENT */
+            color: #FFFFFF !important;
             border-radius: 20px !important;
             border: none !important;
             box-shadow: var(--card-shadow) !important;
@@ -55,7 +67,6 @@ def apply_theme():
             transition: transform 0.2s ease, filter 0.2s ease !important;
         }
         
-        /* Catch inner span/p text to ensure it stays white */
         button[kind="primary"] *, div.stButton > button[kind="primary"] * {
             color: #FFFFFF !important;
         }
@@ -82,6 +93,7 @@ def apply_theme():
 
         button[kind="secondary"]:hover {
             transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.1) !important; /* Subtle purple glow */
         }
         
         /* METRIC CARDS */
@@ -121,13 +133,13 @@ def apply_theme():
         }
         
         /* General Fixes */
-        .block-container { padding-top: 1rem !important; }
+        .block-container { padding-top: 1.5rem !important; }
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
 
 FOOTER_HTML = """
-<div style="text-align: center; margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(128,128,128,0.2); color: var(--text-secondary); font-size: 13px; font-family: 'Inter', sans-serif; letter-spacing: 1.5px;">
-    SMART HEALTH COMPANION • DAILY WELLNESS TRACKER
+<div style="text-align: center; margin-top: 60px; padding-bottom: 24px; border-top: 1px solid rgba(128,128,128,0.2); color: var(--text-secondary); font-size: 13px; font-family: 'Inter', sans-serif; letter-spacing: 1.5px;">
+    TOTAL LIFE DOWNLOAD HUB • AGENTIC RISK MANAGEMENT
 </div>
 """

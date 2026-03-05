@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 # 1. PAGE SETUP & THEME
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="My Health Hub", page_icon="🧬", layout="wide")
+st.set_page_config(page_title="TLDH | Total Life Download", page_icon="🧬", layout="wide")
 styles.apply_theme()  # Injects auto-switching CSS variables
 
 # -----------------------------------------------------------------------------
@@ -24,19 +24,11 @@ styles.apply_theme()  # Injects auto-switching CSS variables
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # ---------------------------------------------------------
-    # TEMPORAL MODEL SELECTION
-    # Prioritizes Gemini 3 (2026), falls back to 1.5 if key is legacy.
-    # ---------------------------------------------------------
     try:
         # TARGET STATE: March 2026 Architecture
         target_model = 'gemini-3-flash-preview'
-        
-        # Test the connection to the future model
         test_model = genai.GenerativeModel(target_model)
-        # We run a dummy generation to verify access rights immediately
         test_model.generate_content("Ping") 
-        
         active_model_name = target_model
         model_status = "✨ GEMINI 3.0 FLASH (PREVIEW) ONLINE"
         
@@ -45,7 +37,6 @@ try:
         active_model_name = 'gemini-1.5-flash'
         model_status = "⚠️ LEGACY FALLBACK: GEMINI 1.5 FLASH"
 
-    # Instantiate the working models
     model_text = genai.GenerativeModel(active_model_name)
     model_json = genai.GenerativeModel(
         active_model_name,
@@ -67,7 +58,6 @@ with st.sidebar:
         index=0
     )
     st.markdown("---")
-    # Display which AI brain is currently driving the car
     st.caption(f"**AI Engine:**\n{model_status}")
 
 # -----------------------------------------------------------------------------
@@ -76,7 +66,6 @@ with st.sidebar:
 try:
     with st.spinner("Syncing Health Data..."):
         raw_data = logic.fetch_health_data()
-        # The risk calculator now returns the MODIFIED data frame as the first return value
         full_data, status, color_hex, reason = logic.calc_glycemic_risk(raw_data, current_context)
         latest = full_data.iloc[-1]
 except Exception as e:
@@ -85,18 +74,30 @@ except Exception as e:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 5. HEADER UI
+# 5. HEADER UI (Branded)
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
 safe_color_hex = html.escape(str(color_hex))
 
+# Inject Logo & Title layout
+col_logo, col_text = st.columns([1, 8])
+with col_logo:
+    try:
+        st.image("tldh_logo.png", width=80)
+    except Exception:
+        st.error("Logo missing")
+
+with col_text:
+    st.markdown(f"""
+        <div style="margin-top: 5px;">
+            <span style="font-size: 32px; font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Total Life Download Hub</span><br>
+            <span style="color: var(--text-secondary); font-weight: 600; font-size: 1.1rem;">Agentic Risk Management Engine</span>
+        </div>
+    """, unsafe_allow_html=True)
+
 st.markdown(f"""
-    <div style="padding-bottom: 20px;">
-        <span style="font-size: 28px; font-weight: bold; color: var(--text-primary);">Smart Health Companion</span><br>
-        <span style="color: var(--text-secondary);">Daily Wellness Tracker</span>
-    </div>
-    <div style="margin-bottom: 20px;">
+    <div style="margin-top: 25px; margin-bottom: 20px;">
         <span style="font-weight: 600; color: var(--text-secondary);">Current Status: </span>
         <div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000;">{safe_status}</div>
         <div style="margin-top: 5px; font-size: 14px; color: var(--text-secondary);">Analysis: {safe_reason}</div>
@@ -145,7 +146,8 @@ if st.session_state.active_view == "Wellness":
     st.markdown("---")
     
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color='#8AADF4', width=3)))
+    # UPDATED LINE COLOR TO MATCH BRANDING (#8B5CF6 - Indigo/Purple)
+    fig.add_trace(go.Scatter(x=full_data['Timestamp'], y=full_data['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
     fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(
@@ -216,10 +218,8 @@ elif st.session_state.active_view == "Assistant":
                 try:
                     full_prompt = f"{extraction_prompt}\n\nUser Entry: {text_input}"
                     
-                    # GENERATE CONTENT
                     response = model_json.generate_content(full_prompt)
                     
-                    # SANITIZE RESPONSE
                     clean_text = response.text.strip()
                     if clean_text.startswith("```"):
                         clean_text = clean_text.replace("```json", "").replace("```", "")
