@@ -6,6 +6,7 @@ import styles
 import logic
 import json
 import logging
+import whoop
 from datetime import datetime
 
 # Configure logging
@@ -57,7 +58,31 @@ with st.sidebar:
     st.caption(f"**AI Engine:**\n{model_status}")
     st.divider()
     st.info("The Hub correlates biological telemetry with lifestyle context to offload cognitive strain.")
+# --- WHOOP AUTH LOGIC ---
+if "whoop_token" not in st.session_state:
+    st.session_state.whoop_token = None
 
+# Check if we are returning from Whoop with a 'code' in the URL
+query_params = st.query_params
+if "code" in query_params and not st.session_state.whoop_token:
+    with st.spinner("Finalizing Whoop Connection..."):
+        auth_code = query_params["code"]
+        token_data = whoop.get_access_token(auth_code)
+        st.session_state.whoop_token = token_data.get("access_token")
+        # Clean the URL
+        st.query_params.clear()
+        st.rerun()
+
+with st.sidebar:
+    st.divider()
+    if not st.session_state.whoop_token:
+        auth_link = whoop.get_authorization_url()
+        st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True, type="primary")
+    else:
+        st.success("✅ Whoop Connected")
+        if st.button("Refresh Biometrics"):
+            # This is where we'll trigger the data pull next
+            st.rerun()
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
