@@ -84,7 +84,7 @@ safe_color_hex = html.escape(str(color_hex))
 col_logo, col_text = st.columns([1, 8])
 with col_logo:
     try:
-        st.image("tldh_logo.png", width=80)
+        st.image("assets/tldh_logo.png", width=80)
     except Exception:
         st.error("Logo missing")
 
