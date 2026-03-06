@@ -21,7 +21,6 @@ def fetch_health_data():
     
     context = "Normal"
     df = apply_context_modifiers(df, context)
-
     return df
 
 def apply_context_modifiers(df, context):
@@ -61,7 +60,6 @@ def apply_context_modifiers(df, context):
     df['Trend'] = np.where(diffs > 3, "Rising", np.where(diffs < -3, "Falling", "Steady"))
 
     df['Glucose_Value'] = np.clip(df['Glucose_Value'], 65, 220)
-
     return df
 
 # ---------------------------------------------------------
@@ -104,4 +102,34 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0):
         if latest_trend == "Falling":
             return df, "🟡 MONITORING", "#EED49F", "Blood sugar is high but falling. Monitoring to prevent insulin stacking."
         else:
-            return df, "🔴 NEEDS ATTENTION", "#ED879
+            return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is high."
+            
+    elif latest_glucose < 70:
+        return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is low."
+
+    # 2. WHOOP BIOMETRIC ANALYSIS (Leading Indicators)
+    whoop_status = ""
+    whoop_modifier = 1.0
+    
+    if whoop_data:
+        score = whoop_data.get('score', {}).get('recovery_score', 100)
+        whoop_modifier, whoop_status = get_whoop_risk_modifier(score)
+        
+    # 3. CONTEXT GATES
+    if whoop_modifier >= 1.5:
+        return df, "🔴 CAUTION", "#ED8796", f"{whoop_status} High physiological risk detected."
+
+    if context == "Exercise" and latest_glucose < 100:
+        return df, "🟡 CAUTION", "#EED49F", "Blood sugar dropping. Consider a snack."
+        
+    if context == "Stressed" and latest_glucose > 150:
+        return df, "🟡 ELEVATED", "#EED49F", "Stress may be affecting blood sugar."
+        
+    if context == "Sick":
+        return df, "🟠 MONITORING", "#F5A97F", "Illness may affect physiological baseline."
+
+    # 4. FINAL RESILIENCE CHECK
+    if whoop_modifier > 1.0:
+         return df, "🟡 MONITORING", "#EED49F", f"{whoop_status} Baseline resilience is lowered."
+
+    return df, "🟢 STABLE", "#A6DA95", f"{whoop_status} Everything looks good."
