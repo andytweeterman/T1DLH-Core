@@ -5,14 +5,9 @@ import google.generativeai as genai
 import styles
 import logic
 import json
-import logging
 import whoop
 from datetime import datetime
 import calendar_sync
-
-# Configure logging
-logging.basicConfig(level=logging.ERROR)
-logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # 1. PAGE SETUP & THEME
