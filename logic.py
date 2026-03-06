@@ -37,6 +37,10 @@ def apply_context_modifiers(df, context):
         crash = np.zeros(len(df))
         crash[-24:] = np.linspace(0, -60, 24) 
         df['Glucose_Value'] = df['Glucose_Value'] + crash + noise
+    elif context == "Project":
+        # Sustained, slow drain on glucose over hours of manual labor
+        drain = np.linspace(0, -40, len(df))
+        df['Glucose_Value'] = df['Glucose_Value'] + drain + noise
     elif context == "Travel":
         spikes = np.zeros(len(df))
         indices = np.random.choice(range(len(df)), size=3, replace=False)
@@ -124,6 +128,9 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
         return df, "🟡 LOAD ALERT", "#EED49F", f"{sched_status}"
 
     # C. Standard Contextual analysis
+    if context == "Project" and latest_glucose < 110:
+        if latest_trend == "Falling":
+            return df, "🟡 CAUTION", "#EED49F", "Sustained labor is dropping your glucose. Carb up before continuing."
     if context == "Exercise" and latest_glucose < 100:
         return df, "🟡 CAUTION", "#EED49F", "Glucose dropping during activity."
     if context == "Stressed" and latest_glucose > 150:

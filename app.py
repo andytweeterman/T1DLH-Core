@@ -138,8 +138,8 @@ with st.container(border=True):
         with st.popover(f"CONTEXT: {safe_context.upper()}", use_container_width=True):
             new_ctx = st.radio(
                 "Update Activity Context:",
-                ["Normal", "Stressed", "Sick", "Exercise", "Travel"],
-                index=["Normal", "Stressed", "Sick", "Exercise", "Travel"].index(st.session_state.current_context)
+                ["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"],
+                index=["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context)
             )
             if st.button("Apply Changes"):
                 st.session_state.current_context = new_ctx
