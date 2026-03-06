@@ -87,15 +87,30 @@ def get_whoop_risk_modifier(recovery_score):
     else:
         return 1.0, "🟢 GREEN RECOVERY."
 
-def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0):
+def check_speaker_mode(events):
     """
-    The ERM Engine. Calculates Risk Score based on Chaos Data, real-time biometrics, and schedule density.
-    Includes Jules's physiological trend guardrails.
+    Scans upcoming 1-hour window for high-stakes keywords.
+    Returns True if 'Panel', 'Presentation', or 'AFERM' is found.
     """
-    df = apply_context_modifiers(df, context)
+    keywords = ["panel", "presentation", "aferm", "keynote", "board"]
+    for event in events:
+        title = event.get('summary', '').lower()
+        if any(kw in title for kw in keywords):
+            return True
+    return False
+
+# Updated calc_glycemic_risk
+def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
+    # ... existing code ...
     
-    latest_glucose = df['Glucose_Value'].iloc[-1]
-    latest_trend = df['Trend'].iloc[-1]
+    # 1. BASELINE GATES
+    # If Speaker Mode is active, we tighten the "Caution" threshold from 180 to 150
+    high_threshold = 150 if speaker_mode else 180
+    
+    if latest_glucose > high_threshold:
+        if speaker_mode:
+            return df, "🔴 SPEAKER ALERT", "#ED8796", "High-stakes event detected. Sensitivity increased. Monitor for cortisol spike."
+        # ... rest of your standard logic ...
     
     # 1. BASELINE GATES (Safety First - Jules PR included)
     if latest_glucose > 180:

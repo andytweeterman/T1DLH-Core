@@ -8,6 +8,7 @@ import json
 import logging
 import whoop
 from datetime import datetime
+import calendar_sync
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
@@ -80,27 +81,33 @@ with st.sidebar:
         st.success("✅ Whoop Connected")
         if st.button("Refresh Biometrics"):
             st.rerun()
-
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
 try:
-    with st.spinner("Syncing Health Data..."):
+    with st.spinner("Syncing Health & Schedule Data..."):
+        # A. Fetch Whoop Data
         whoop_metrics = None
         if st.session_state.whoop_token:
             whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token)
         
+       # B. Fetch Schedule Context
+meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
+        
+        # C. Fetch Dexcom/Health Data
         raw_data = logic.fetch_health_data()
         
-        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
-            raw_data, 
-            st.session_state.current_context,
-            whoop_data=whoop_metrics
-        )
+ # D. Calculate Risk
+full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+    raw_data, 
+    st.session_state.current_context,
+    whoop_data=whoop_metrics,
+    meeting_count=meeting_count,
+    speaker_mode=speaker_mode # Pass the trigger
+)
         latest = full_data.iloc[-1]
 except Exception as e:
     st.error(f"Data loading failed: {e}")
-
 # -----------------------------------------------------------------------------
 # 5. HEADER UI (Clean & Text-Only)
 # -----------------------------------------------------------------------------
@@ -229,22 +236,38 @@ if st.session_state.active_view == "Wellness":
         yaxis=dict(fixedrange=True)
     )
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
 # --- VIEW B: SCHEDULE ---
 elif st.session_state.active_view == "Schedule":
-    h1, h2, h3 = st.columns(3)
+    # Main Header for the View
+    st.markdown("### 🗓️ Cognitive Load & Schedule Density")
+    
+    # 4-Column Layout for Schedule Cards
+    h1, h2, h3, h4 = st.columns(4)
     card_css = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
     
+    # Logic for status strings (ERM-style)
     t_status = '🟢 SAFE' if st.session_state.current_context != 'Travel' else '🔴 EVALUATE'
     m_status = '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'
     
+    # MEETING DENSITY LOGIC (The new "Jules" Metric)
+    # We grab 'meeting_count' which was defined in Section 4 (Data Loading)
+    density_label = "🟢 LIGHT"
+    if meeting_count >= 7:
+        density_label = "🔴 CRITICAL"
+    elif meeting_count >= 4:
+        density_label = "🟡 ELEVATED"
+
     with h1: 
         st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>1 HOUR</div><div style='font-weight:800;'>{t_status}</div></div>", unsafe_allow_html=True)
     with h2: 
         st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>4 HOURS</div><div style='font-weight:800;'>{m_status}</div></div>", unsafe_allow_html=True)
     with h3: 
         st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>24 HOURS</div><div style='font-weight:800;'>🟢 GOOD</div></div>", unsafe_allow_html=True)
+    with h4:
+        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>MEETINGS</div><div style='font-weight:800;'>{meeting_count} ({density_label})</div></div>", unsafe_allow_html=True)
 
+    st.markdown("---")
+    st.info(f"**Agentic Insight:** The Risk Engine is currently factoring in **{meeting_count} meetings** over the next 8 hours to adjust your glycemic sensitivity threshold.")
 # --- VIEW C: ASSISTANT ---
 elif st.session_state.active_view == "Assistant":
     st.markdown("### 🧬 Smart Health Companion")
