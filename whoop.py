@@ -30,7 +30,7 @@ def get_access_token(auth_code):
         "client_secret": CLIENT_SECRET,
         "redirect_uri": REDIRECT_URI,
     }
-    response = requests.post(TOKEN_URL, data=data)
+    response = requests.post(TOKEN_URL, data=data, timeout=10)
     return response.json()
 
 def fetch_whoop_recovery(token):
@@ -38,7 +38,7 @@ def fetch_whoop_recovery(token):
     headers = {"Authorization": f"Bearer {token}"}
     # Pulling the latest recovery entry
     url = "https://api.prod.whoop.com/developer/v1/recovery"
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=10)
     if response.status_code == 200:
         data = response.json()
         return data[0] if data else None
