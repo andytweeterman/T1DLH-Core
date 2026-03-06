@@ -186,12 +186,14 @@ st.markdown("---")
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     
-    # ROW 1: Metabolic Telemetry (Dexcom)
+    # ROW 1: Metabolic Telemetry (Dexcom Only)
     st.markdown("#### 🧬 Metabolic Baseline")
-    cols_dex = st.columns(3)
+    
+    # Changed from 3 columns to 2 to scrub the IOB placeholder
+    cols_dex = st.columns(2)
     cols_dex[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
     cols_dex[1].metric("Trend", latest['Trend'])
-    cols_dex[2].metric("Active Insulin", "1.5 U", "-0.2 U") 
+    # REMOVED: cols_dex[2].metric("Active Insulin", "1.5 U", "-0.2 U")
 
     # ROW 2: Systemic Resilience (Whoop)
     if st.session_state.whoop_token and whoop_metrics:
@@ -241,15 +243,17 @@ if st.session_state.active_view == "Wellness":
 
 # --- VIEW B: SCHEDULE ---
 elif st.session_state.active_view == "Schedule":
-    # Main Header for the View
     st.markdown("### 🗓️ Cognitive Load & Schedule Density")
     
-    # 4-Column Layout for Schedule Cards
     h1, h2, h3, h4 = st.columns(4)
     card_css = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
     
-    # Logic for status strings (ERM-style)
-    t_status = '🟢 SAFE' if st.session_state.current_context != 'Travel' else '🔴 EVALUATE'
+    # ERM-style status strings
+    # Adjusted to recognize Travel as an active advisory state, not an error
+    t_status = '🟢 SAFE'
+    if st.session_state.current_context == 'Travel':
+        t_status = '✈️ SHIFTING'
+        
     m_status = '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'
     
     # MEETING DENSITY LOGIC (The new "Jules" Metric)

@@ -87,6 +87,19 @@ def is_weekend_window():
     if weekday == 0 and hour < 8: return True   # Monday before 8AM
     return False
 
+def generate_travel_advisory(offset_hours=6):
+    """
+    Generates a phased pump time-shift protocol to prevent basal stacking.
+    Defaults to a +6 hour shift.
+    """
+    shift = offset_hours / 3
+    return (
+        f"✈️ TRAVEL PROTOCOL (+{offset_hours}h Shift): "
+        f"1️⃣ Today: Shift pump +{int(shift)}h. "
+        f"2️⃣ Tomorrow: Shift +{int(shift)}h. "
+        f"3️⃣ Day 3: Final +{int(shift)}h shift to local time. "
+        "🛡️ Low gates raised to 100 mg/dL for walking."
+    )
 # -----------------------------------------------------------------------------
 # 3. THE UNIFIED ERM ENGINE
 # -----------------------------------------------------------------------------
@@ -127,14 +140,33 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
     if not weekend_active and sched_modifier > 1.2:
         return df, "🟡 LOAD ALERT", "#EED49F", f"{sched_status}"
 
-    # C. Standard Contextual analysis
+# C. Standard Contextual analysis
+    if context == "Travel":
+        advisory = generate_travel_advisory(offset_hours=6)
+        
+        # 1. Jetlag Cortisol Check (Tightened High Threshold)
+        if latest_glucose > 160:
+            return df, "🟡 JETLAG ALERT", "#EED49F", f"{advisory} | High glucose detected. Likely travel stress/cortisol."
+        
+        # 2. Touring/Walking Check (Raised Low Threshold to 100)
+        elif latest_glucose < 100:
+            if latest_trend == "Falling":
+                return df, "🔴 TOUR LOW", "#ED8796", f"{advisory} | Active drop during travel. Treat immediately."
+            return df, "🟡 CAUTION", "#EED49F", f"{advisory} | Glucose dipping. Grab a snack."
+            
+        # 3. Stable Travel State
+        return df, "🟢 TRAVELING", "#A6DA95", advisory
+
     if context == "Project" and latest_glucose < 110:
         if latest_trend == "Falling":
-            return df, "🟡 CAUTION", "#EED49F", "Sustained labor is dropping your glucose. Carb up before continuing."
+            return df, "🟡 CAUTION", "#EED49F", "Sustained labor dropping glucose. Carb up."
+
     if context == "Exercise" and latest_glucose < 100:
         return df, "🟡 CAUTION", "#EED49F", "Glucose dropping during activity."
+        
     if context == "Stressed" and latest_glucose > 150:
         return df, "🟡 ELEVATED", "#EED49F", "Stress affecting glycemic baseline."
+        
     if context == "Sick":
         return df, "🟠 MONITORING", "#F5A97F", "Baseline instability due to illness."
 
