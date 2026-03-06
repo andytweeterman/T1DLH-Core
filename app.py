@@ -82,6 +82,16 @@ with st.sidebar:
         if st.button("Refresh Biometrics"):
             st.rerun()
 
+# Check if weekend mode is active for the UI
+is_weekend = logic.is_weekend_window()
+weekend_tag = "🌴 " if is_weekend else ""
+
+st.markdown(f"""
+    <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); font-style: italic; border-left: 3px solid var(--accent-start); padding-left: 10px;">
+        Analysis: {weekend_tag}{safe_reason}
+    </div>
+""", unsafe_allow_html=True)
+
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------

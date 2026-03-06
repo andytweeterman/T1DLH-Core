@@ -72,6 +72,17 @@ def get_whoop_risk_modifier(recovery_score):
         return 1.2, "WHOOP: YELLOW RECOVERY."
     return 1.0, "WHOOP: GREEN RECOVERY."
 
+def is_weekend_window():
+    """Checks if the current time falls between Fri 5PM and Mon 8AM."""
+    now = datetime.now()
+    weekday = now.weekday() # 4=Fri, 5=Sat, 6=Sun, 0=Mon
+    hour = now.hour
+    
+    if weekday == 4 and hour >= 17: return True # Friday after 5PM
+    if weekday in [5, 6]: return True           # All day Sat/Sun
+    if weekday == 0 and hour < 8: return True   # Monday before 8AM
+    return False
+
 # -----------------------------------------------------------------------------
 # 3. THE UNIFIED ERM ENGINE
 # -----------------------------------------------------------------------------
@@ -90,6 +101,7 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
         whoop_modifier, whoop_status = get_whoop_risk_modifier(score)
     
     sched_modifier, sched_status = calculate_schedule_load(meeting_count)
+    weekend_active = is_weekend_window()
 
     # A. Safety First: Thresholds & Jules Guardrails
     high_threshold = 150 if speaker_mode else 180
@@ -106,10 +118,12 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
     # B. Contextual Escalation (Biometric + Schedule Alignment)
     if whoop_modifier >= 1.5:
         return df, "🔴 CAUTION", "#ED8796", f"{whoop_status} High physiological strain."
-    if sched_modifier > 1.2:
+        
+    # Ignore schedule density alerts if Weekend Mode is active
+    if not weekend_active and sched_modifier > 1.2:
         return df, "🟡 LOAD ALERT", "#EED49F", f"{sched_status}"
 
-    # C. standard Contextual analysis
+    # C. Standard Contextual analysis
     if context == "Exercise" and latest_glucose < 100:
         return df, "🟡 CAUTION", "#EED49F", "Glucose dropping during activity."
     if context == "Stressed" and latest_glucose > 150:
@@ -121,4 +135,9 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
     if whoop_modifier > 1.0:
          return df, "🟡 MONITORING", "#EED49F", f"{whoop_status} Lowered resilience."
 
-    return df, "🟢 STABLE", "#A6DA95", f"{whoop_status} System nominal."
+    # E. Final Output with Weekend Indicator
+    final_reason = f"{whoop_status} System nominal."
+    if weekend_active:
+        final_reason = f"🌴 WEEKEND MODE ACTIVE | {final_reason}"
+
+    return df, "🟢 STABLE", "#A6DA95", final_reason
