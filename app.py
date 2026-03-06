@@ -53,8 +53,7 @@ if "current_context" not in st.session_state:
     st.session_state.current_context = "Normal"
 
 with st.sidebar:
-    st.image("assets/tldh_logo.png", width=100)
-    st.header("System Monitor")
+       st.header("System Monitor")
     st.caption(f"**AI Engine:**\n{model_status}")
     st.divider()
     st.info("The Hub correlates biological telemetry with lifestyle context to offload cognitive strain.")
@@ -107,27 +106,19 @@ except Exception as e:
     st.error(f"Data loading failed: {e}")
 
 # -----------------------------------------------------------------------------
-# 5. HEADER UI (Unified Control Bar)
+# 5. HEADER UI (Clean & Text-Only)
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason))
 safe_color_hex = html.escape(str(color_hex))
 safe_context = html.escape(str(st.session_state.current_context))
 
-col_logo, col_text = st.columns([1, 8])
-with col_logo:
-    try:
-        st.image("assets/tldh_logo.png", width=80)
-    except:
-        st.write("🧬")
-
-with col_text:
-    st.markdown(f"""
-        <div style="margin-top: 5px;">
-            <span style="font-size: 32px; font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Total Life Download Hub</span><br>
-            <span style="color: var(--text-secondary); font-weight: 600; font-size: 1.1rem;">Agentic Risk Management Engine</span>
-        </div>
-    """, unsafe_allow_html=True)
+st.markdown(f"""
+    <div style="margin-top: 5px; margin-bottom: 20px;">
+        <span style="font-size: 32px; font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Total Life Download Hub</span><br>
+        <span style="color: var(--text-secondary); font-weight: 600; font-size: 1.1rem;">Agentic Risk Management Engine</span>
+    </div>
+""", unsafe_allow_html=True)
 
 with st.container(border=True):
     p_col1, p_col2, p_col3, p_spacer = st.columns([1.5, 2, 3, 5])
@@ -181,10 +172,7 @@ with c4:
         st.session_state.active_view = "Sleep"
         st.rerun()
 st.markdown("---")
-
-# -----------------------------------------------------------------------------
-# 7. RENDER VIEWS
-# -----------------------------------------------------------------------------
+--------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # 7. RENDER VIEWS
 # -----------------------------------------------------------------------------
@@ -193,11 +181,41 @@ st.markdown("---")
 if st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     
-    st.markdown("#### 🧬 Metabolic Baseline")
-    cols_dex = st.columns(3)
-    cols_dex[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
-    cols_dex[1].metric("Trend", latest['Trend'])
-    cols_dex[2].metric("Active Insulin", "1.5 U", "-0.2 U")
+st.markdown("---")
+    
+    # NEW: Fixed Time Window Controls
+    time_window = st.segmented_control(
+        "Time Range", 
+        options=["3h", "6h", "12h", "24h"], 
+        default="6h", 
+        label_visibility="collapsed"
+    )
+    
+    # Map selection to data rows (assuming 5-min intervals: 12 rows = 1 hour)
+    row_mapping = {"3h": 36, "6h": 72, "12h": 144, "24h": 288}
+    plot_data = full_data.tail(row_mapping[time_window])
+
+    # GLUCOSE CHART
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=plot_data['Timestamp'], y=plot_data['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
+    
+    # Target Range Highlighting (70-180 mg/dL)
+    fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
+    fig.add_hline(y=70, line_dash="dash", line_color="#ED8796", annotation_text="LOW GATES")
+    
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='gray'),
+        height=400, 
+        margin=dict(l=0, r=0, t=30, b=0), 
+        yaxis_title="mg/dL",
+        # NEW: Lock the axes to prevent scrolling/zooming chaos
+        xaxis=dict(fixedrange=True),
+        yaxis=dict(fixedrange=True)
+    )
+    # NEW: Hide the Plotly modebar entirely
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
     if st.session_state.whoop_token and whoop_metrics:
         st.markdown("#### ⚡ Systemic Resilience")
