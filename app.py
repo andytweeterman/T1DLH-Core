@@ -41,10 +41,12 @@ try:
 
     model_json = genai.GenerativeModel(
         active_model_name,
-        generation_config={"response_mime_type": "application/json"}
+        generation_config={"response_mime_type": "application/json"},
+        system_instruction="Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction."
     )
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
+    logger.exception(f"API Critical Failure: {e}")
+    st.error("⚠️ API Critical Failure. Please check system logs.")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -107,8 +109,16 @@ try:
             speaker_mode=speaker_mode
         )
         latest = full_data.iloc[-1]
+except KeyError as e:
+    logger.exception(f"Data loading failed (missing columns): {e}")
+    status = "DATA ERROR"
+    color_hex = "#EF4444"
+    reason = "Missing expected data columns."
 except Exception as e:
-    st.error(f"Data loading failed: {e}")
+    logger.exception(f"Data loading failed: {e}")
+    status = "SYSTEM ERROR"
+    color_hex = "#EF4444"
+    reason = "A system error occurred during data loading."
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI (Clean & Text-Only)
@@ -285,14 +295,15 @@ elif st.session_state.active_view == "Assistant":
         if st.form_submit_button("Analyze Load", type="primary") and text_input:
             with st.spinner("Analyzing..."):
                 try:
-                    prompt = f"Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction: {text_input}"
-                    response = model_json.generate_content(prompt)
+                    response = model_json.generate_content(text_input)
                     clean_text = response.text.strip().replace("```json", "").replace("```", "")
                     parsed = json.loads(clean_text)
                     parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
-                except Exception as e: st.error(f"Analysis failed: {e}")
+                except Exception as e:
+                    logger.exception(f"Analysis failed: {e}")
+                    st.error("Analysis failed. Please try again.")
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
         st.success(f"**Insight:** {entry['reply']}")
