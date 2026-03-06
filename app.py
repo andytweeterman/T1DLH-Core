@@ -41,7 +41,8 @@ try:
 
     model_json = genai.GenerativeModel(
         active_model_name,
-        generation_config={"response_mime_type": "application/json"}
+        generation_config={"response_mime_type": "application/json"},
+        system_instruction="Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction."
     )
 except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}")
@@ -285,8 +286,7 @@ elif st.session_state.active_view == "Assistant":
         if st.form_submit_button("Analyze Load", type="primary") and text_input:
             with st.spinner("Analyzing..."):
                 try:
-                    prompt = f"Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction: {text_input}"
-                    response = model_json.generate_content(prompt)
+                    response = model_json.generate_content(text_input)
                     clean_text = response.text.strip().replace("```json", "").replace("```", "")
                     parsed = json.loads(clean_text)
                     parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
