@@ -44,7 +44,8 @@ try:
         generation_config={"response_mime_type": "application/json"}
     )
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
+    logger.exception("API Critical Failure")
+    st.error("⚠️ API Critical Failure. System offline.")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -107,8 +108,18 @@ try:
             speaker_mode=speaker_mode
         )
         latest = full_data.iloc[-1]
+except KeyError as e:
+    logger.exception("Data loading failed")
+    status = "DATA ERROR"
+    color_hex = "#ED8796"
+    reason = "Missing required data columns."
+    st.error("Data loading failed. Please try again later.")
 except Exception as e:
-    st.error(f"Data loading failed: {e}")
+    logger.exception("Data loading failed")
+    status = "SYSTEM ERROR"
+    color_hex = "#ED8796"
+    reason = "A critical system error occurred."
+    st.error("Data loading failed. Please try again later.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI (Clean & Text-Only)
@@ -292,7 +303,9 @@ elif st.session_state.active_view == "Assistant":
                     parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
-                except Exception as e: st.error(f"Analysis failed: {e}")
+                except Exception as e:
+                    logger.exception("Analysis failed")
+                    st.error("Analysis failed. Please try again later.")
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
         st.success(f"**Insight:** {entry['reply']}")
