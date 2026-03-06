@@ -6,6 +6,7 @@ import streamlit as st
 # -----------------------------------------------------------------------------
 # 1. BIOMETRIC SIMULATOR
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=300)
 def fetch_health_data():
     """Simulates 24 hours of Dexcom/Whoop data."""
     end_time = datetime.now()

@@ -33,6 +33,7 @@ def get_access_token(auth_code):
     response = requests.post(TOKEN_URL, data=data)
     return response.json()
 
+@st.cache_data(ttl=300)
 def fetch_whoop_recovery(token):
     """Pulls the latest recovery metrics (HRV, RHR, Score)."""
     headers = {"Authorization": f"Bearer {token}"}
