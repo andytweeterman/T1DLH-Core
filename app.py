@@ -81,6 +81,7 @@ with st.sidebar:
         st.success("✅ Whoop Connected")
         if st.button("Refresh Biometrics"):
             st.rerun()
+
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
@@ -91,23 +92,24 @@ try:
         if st.session_state.whoop_token:
             whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token)
         
-       # B. Fetch Schedule Context
-meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
+        # B. Fetch Schedule Context (Now correctly indented)
+        meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
         
         # C. Fetch Dexcom/Health Data
         raw_data = logic.fetch_health_data()
         
- # D. Calculate Risk
-full_data, status, color_hex, reason = logic.calc_glycemic_risk(
-    raw_data, 
-    st.session_state.current_context,
-    whoop_data=whoop_metrics,
-    meeting_count=meeting_count,
-    speaker_mode=speaker_mode # Pass the trigger
-)
+        # D. Calculate Risk (Passing speaker_mode for threshold adjustments)
+        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+            raw_data, 
+            st.session_state.current_context,
+            whoop_data=whoop_metrics,
+            meeting_count=meeting_count,
+            speaker_mode=speaker_mode
+        )
         latest = full_data.iloc[-1]
 except Exception as e:
     st.error(f"Data loading failed: {e}")
+
 # -----------------------------------------------------------------------------
 # 5. HEADER UI (Clean & Text-Only)
 # -----------------------------------------------------------------------------
