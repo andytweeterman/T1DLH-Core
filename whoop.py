@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import base64
 from urllib.parse import urlencode
 
 # Load credentials from Streamlit secrets
