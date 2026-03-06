@@ -126,7 +126,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    p_col1, p_col2, p_col3, p_spacer = st.columns([1.5, 2, 3, 5])
+    p_col1, p_col2, p_col3, _ = st.columns([1.5, 2, 3, 5])
     
     with p_col1:
         st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; margin-top: 10px;'>Live Status</p>", unsafe_allow_html=True)
