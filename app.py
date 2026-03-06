@@ -82,16 +82,6 @@ with st.sidebar:
         if st.button("Refresh Biometrics"):
             st.rerun()
 
-# Check if weekend mode is active for the UI
-is_weekend = logic.is_weekend_window()
-weekend_tag = "🌴 " if is_weekend else ""
-
-st.markdown(f"""
-    <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); font-style: italic; border-left: 3px solid var(--accent-start); padding-left: 10px;">
-        Analysis: {weekend_tag}{safe_reason}
-    </div>
-""", unsafe_allow_html=True)
-
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
@@ -102,13 +92,13 @@ try:
         if st.session_state.whoop_token:
             whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token)
         
-        # B. Fetch Schedule Context (Now correctly indented)
+        # B. Fetch Schedule Context 
         meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
         
         # C. Fetch Dexcom/Health Data
         raw_data = logic.fetch_health_data()
         
-        # D. Calculate Risk (Passing speaker_mode for threshold adjustments)
+        # D. Calculate Risk 
         full_data, status, color_hex, reason = logic.calc_glycemic_risk(
             raw_data, 
             st.session_state.current_context,
@@ -124,7 +114,7 @@ except Exception as e:
 # 5. HEADER UI (Clean & Text-Only)
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
-safe_reason = html.escape(str(reason))
+safe_reason = html.escape(str(reason)) 
 safe_color_hex = html.escape(str(color_hex))
 safe_context = html.escape(str(st.session_state.current_context))
 
@@ -248,6 +238,7 @@ if st.session_state.active_view == "Wellness":
         yaxis=dict(fixedrange=True)
     )
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
 # --- VIEW B: SCHEDULE ---
 elif st.session_state.active_view == "Schedule":
     # Main Header for the View
@@ -280,6 +271,7 @@ elif st.session_state.active_view == "Schedule":
 
     st.markdown("---")
     st.info(f"**Agentic Insight:** The Risk Engine is currently factoring in **{meeting_count} meetings** over the next 8 hours to adjust your glycemic sensitivity threshold.")
+
 # --- VIEW C: ASSISTANT ---
 elif st.session_state.active_view == "Assistant":
     st.markdown("### 🧬 Smart Health Companion")
