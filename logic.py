@@ -1,16 +1,89 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import streamlit as st
+
+# -----------------------------------------------------------------------------
+# 1. BIOMETRIC SIMULATOR
+# -----------------------------------------------------------------------------
+def fetch_health_data():
+    """Simulates 24 hours of Dexcom/Whoop data."""
+    end_time = datetime.now()
+    start_time = end_time - timedelta(minutes=5 * 287)
+    timestamps = [start_time + timedelta(minutes=5 * i) for i in range(288)]
+    
+    # Base Sine Wave (130 mg/dL center)
+    base_glucose = 130 + 30 * np.sin(np.linspace(0, 4 * np.pi, len(timestamps)))
+    
+    df = pd.DataFrame({
+        'Timestamp': timestamps,
+        'Glucose_Value': base_glucose,
+        'Trend': 'Flat' 
+    })
+    
+    # We apply the default 'Normal' biological noise here
+    return apply_context_modifiers(df, "Normal")
+
+def apply_context_modifiers(df, context):
+    """Injects real-life chaos into the base telemetry."""
+    noise = np.random.normal(0, 3, len(df)) 
+    
+    if context == "Stressed":
+        drift = np.linspace(0, 40, len(df)) 
+        df['Glucose_Value'] = df['Glucose_Value'] + drift + np.random.normal(0, 8, len(df))
+    elif context == "Sick":
+        df['Glucose_Value'] = df['Glucose_Value'] + 50 + np.random.normal(0, 12, len(df))
+    elif context == "Exercise":
+        crash = np.zeros(len(df))
+        crash[-24:] = np.linspace(0, -60, 24) 
+        df['Glucose_Value'] = df['Glucose_Value'] + crash + noise
+    elif context == "Travel":
+        spikes = np.zeros(len(df))
+        indices = np.random.choice(range(len(df)), size=3, replace=False)
+        for idx in indices:
+            x = np.arange(len(df))
+            spikes += 60 * np.exp(-0.5 * ((x - idx) / 6)**2) 
+        df['Glucose_Value'] = df['Glucose_Value'] + spikes + noise
+    else:
+        df['Glucose_Value'] = df['Glucose_Value'] + noise
+
+    # Recalculate Trend Velocity
+    diffs = df['Glucose_Value'].diff().fillna(0)
+    df['Trend'] = np.where(diffs > 3, "Rising", np.where(diffs < -3, "Falling", "Steady"))
+    df['Glucose_Value'] = np.clip(df['Glucose_Value'], 65, 220)
+    return df
+
+# -----------------------------------------------------------------------------
+# 2. RISK ANALYSIS HELPERS
+# -----------------------------------------------------------------------------
+def calculate_schedule_load(meeting_count):
+    """Translates calendar density into an ERM risk multiplier."""
+    if meeting_count >= 7:
+        return 1.3, "🔴 HIGH LOAD: Schedule density is critical."
+    elif meeting_count >= 4:
+        return 1.15, "🟡 ELEVATED LOAD: Moderate schedule density."
+    return 1.0, "🟢 LIGHT LOAD: Schedule is clear."
+
+def get_whoop_risk_modifier(recovery_score):
+    """Translates Whoop Recovery into a physiological risk score."""
+    if recovery_score < 34:
+        return 1.5, "WHOOP: RED RECOVERY."
+    elif recovery_score < 67:
+        return 1.2, "WHOOP: YELLOW RECOVERY."
+    return 1.0, "WHOOP: GREEN RECOVERY."
+
+# -----------------------------------------------------------------------------
+# 3. THE UNIFIED ERM ENGINE
+# -----------------------------------------------------------------------------
 def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
-    """
-    The Unified ERM Engine. 
-    Correlates Glucose, Whoop Recovery, Schedule Density, and Speaker Mode.
-    """
-    # 1. Apply environmental context (Stress/Exercise/etc)
+    """Correlates all data streams to provide a unified Risk Status."""
+    # Apply latest user-selected context
     df = apply_context_modifiers(df, context)
     
-    # Define variables from the dataframe
     latest_glucose = df['Glucose_Value'].iloc[-1]
     latest_trend = df['Trend'].iloc[-1]
     
-    # 2. RUN SECONDARY MODIFIERS (Whoop & Schedule)
+    # Process Secondary Streams
     whoop_modifier, whoop_status = 1.0, ""
     if whoop_data:
         score = whoop_data.get('score', {}).get('recovery_score', 100)
@@ -18,41 +91,34 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
     
     sched_modifier, sched_status = calculate_schedule_load(meeting_count)
 
-    # 3. BASELINE GATES (Safety & Speaker Sensitivity)
-    # Tighten the high threshold if in Speaker Mode
+    # A. Safety First: Thresholds & Jules Guardrails
     high_threshold = 150 if speaker_mode else 180
     
     if latest_glucose > high_threshold:
         if speaker_mode:
-            return df, "🔴 SPEAKER ALERT", "#ED8796", "High-stakes event detected. Sensitivity increased for cortisol monitoring."
-        
-        # Safety Trend Guardrail (Jules PR)
+            return df, "🔴 SPEAKER ALERT", "#ED8796", "High-stakes event detected. Sensitivity increased."
         if latest_trend == "Falling":
-            return df, "🟡 MONITORING", "#EED49F", "Blood sugar is high but falling. Monitoring to prevent insulin stacking."
+            return df, "🟡 MONITORING", "#EED49F", "Glucose high but falling. Preventing stacking."
         return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is high."
-            
     elif latest_glucose < 70:
         return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is low."
 
-    # 4. AGENTIC CONTEXT GATES (The "Intelligence" Layer)
-    # Escalate if multi-stream risks align (e.g. Red Recovery + Busy Schedule)
+    # B. Contextual Escalation (Biometric + Schedule Alignment)
     if whoop_modifier >= 1.5:
-        return df, "🔴 CAUTION", "#ED8796", f"{whoop_status} High physiological strain detected."
-    
+        return df, "🔴 CAUTION", "#ED8796", f"{whoop_status} High physiological strain."
     if sched_modifier > 1.2:
         return df, "🟡 LOAD ALERT", "#EED49F", f"{sched_status}"
 
+    # C. standard Contextual analysis
     if context == "Exercise" and latest_glucose < 100:
-        return df, "🟡 CAUTION", "#EED49F", "Blood sugar dropping. Consider a snack."
-        
+        return df, "🟡 CAUTION", "#EED49F", "Glucose dropping during activity."
     if context == "Stressed" and latest_glucose > 150:
-        return df, "🟡 ELEVATED", "#EED49F", "Stress may be affecting blood sugar."
-        
+        return df, "🟡 ELEVATED", "#EED49F", "Stress affecting glycemic baseline."
     if context == "Sick":
-        return df, "🟠 MONITORING", "#F5A97F", "Illness may affect physiological baseline."
+        return df, "🟠 MONITORING", "#F5A97F", "Baseline instability due to illness."
 
-    # 5. RESILIENCE CHECK
+    # D. Recovery Debt
     if whoop_modifier > 1.0:
-         return df, "🟡 MONITORING", "#EED49F", f"{whoop_status} Baseline resilience is lowered."
+         return df, "🟡 MONITORING", "#EED49F", f"{whoop_status} Lowered resilience."
 
-    return df, "🟢 STABLE", "#A6DA95", f"{whoop_status} Everything looks good."
+    return df, "🟢 STABLE", "#A6DA95", f"{whoop_status} System nominal."
