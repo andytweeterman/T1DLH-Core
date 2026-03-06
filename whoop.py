@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import base64
 from urllib.parse import urlencode
+import secrets
 
 # Load credentials from Streamlit secrets
 CLIENT_ID = st.secrets["WHOOP_CLIENT_ID"]
@@ -11,15 +12,16 @@ AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
 def get_authorization_url():
-    """Generates the Whoop login URL."""
+    """Generates the Whoop login URL and a secure random state."""
+    state = secrets.token_urlsafe(16)
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": "offline read:recovery read:cycles read:sleep read:workout",
-        "state": "tldh_auth_state"
+        "state": state
     }
-    return f"{AUTH_URL}?{urlencode(params)}"
+    return f"{AUTH_URL}?{urlencode(params)}", state
 
 def get_access_token(auth_code):
     """Exchanges the auth code for a real access token."""

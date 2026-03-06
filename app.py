@@ -65,18 +65,51 @@ if "whoop_token" not in st.session_state:
 
 query_params = st.query_params
 if "code" in query_params and not st.session_state.whoop_token:
-    with st.spinner("Finalizing Whoop Connection..."):
-        auth_code = query_params["code"]
-        token_data = whoop.get_access_token(auth_code)
-        st.session_state.whoop_token = token_data.get("access_token")
+    returned_state = query_params.get("state")
+    expected_state = st.context.cookies.get("whoop_oauth_state")
+    if not returned_state or not expected_state or returned_state != expected_state:
+        st.error("Authentication failed: Invalid state parameter. Please try connecting again.")
         st.query_params.clear()
-        st.rerun()
+    else:
+        with st.spinner("Finalizing Whoop Connection..."):
+            auth_code = query_params["code"]
+            token_data = whoop.get_access_token(auth_code)
+            st.session_state.whoop_token = token_data.get("access_token")
+            st.query_params.clear()
+            st.rerun()
 
 with st.sidebar:
     st.divider()
     if not st.session_state.whoop_token:
-        auth_link = whoop.get_authorization_url()
-        st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True, type="primary")
+        auth_link, state = whoop.get_authorization_url()
+        # Use an HTML component to set the cookie before redirecting
+        button_html = f"""
+            <style>
+            .btn {{
+                display: block;
+                width: 100%;
+                background-color: #FF4B4B;
+                color: white;
+                text-align: center;
+                padding: 0.5rem 1rem;
+                border-radius: 0.5rem;
+                text-decoration: none;
+                font-family: sans-serif;
+                font-size: 16px;
+                border: none;
+                cursor: pointer;
+            }}
+            .btn:hover {{
+                background-color: #ff3333;
+                color: white;
+                text-decoration: none;
+            }}
+            </style>
+            <button class="btn" onclick="document.cookie='whoop_oauth_state={state}; path=/; max-age=3600'; window.top.location.href='{auth_link}'">
+                🔗 Connect Whoop
+            </button>
+        """
+        st.components.v1.html(button_html, height=50)
     else:
         st.success("✅ Whoop Connected")
         if st.button("Refresh Biometrics"):
