@@ -81,6 +81,14 @@ if "code" in st.query_params and not st.session_state.whoop_token:
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=300) # Cache simulation for 5 minutes
+def get_cached_health_data():
+    return logic.fetch_health_data()
+
+@st.cache_data(ttl=60) # Cache risk state for 1 minute
+def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
+    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode)
+
 try:
     with st.spinner("Syncing Health & Schedule Data..."):
         # A. Fetch Whoop Data
@@ -92,10 +100,10 @@ try:
         meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
         
         # C. Fetch Dexcom/Health Data
-        raw_data = logic.fetch_health_data()
+        raw_data = get_cached_health_data()
         
         # D. Calculate Risk 
-        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+        full_data, status, color_hex, reason = get_cached_glycemic_risk(
             raw_data, 
             st.session_state.current_context,
             whoop_data=whoop_metrics,
@@ -479,8 +487,10 @@ elif st.session_state.active_view == "Assistant":
                         "whoop_day_strain": w_strain
                     }
                     
-                    sys_instruct = """
+                    system_instruction = f"""
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
+                    Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
+                    
                     Correlate their subjective report with their objective telemetry. 
                     Return a valid JSON object with EXACTLY these keys:
                     - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
@@ -489,15 +499,13 @@ elif st.session_state.active_view == "Assistant":
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    local_model = genai.GenerativeModel(
+                    assistant_model = genai.GenerativeModel(
                         active_model_name,
                         generation_config={"response_mime_type": "application/json"},
-                        system_instruction=sys_instruct
+                        system_instruction=system_instruction
                     )
 
-                    prompt = f"Here is the user's real-time hardware telemetry: {json.dumps(live_context)}\n\nThe user just reported the following subjective state: \"{text_input}\""
-
-                    response = local_model.generate_content(prompt)
+                    response = assistant_model.generate_content(text_input)
                     clean_text = response.text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
