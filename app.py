@@ -85,6 +85,65 @@ if "code" in st.query_params and not st.session_state.whoop_token:
             st.rerun()
         else:
             st.sidebar.error("Whoop Auth Failed. Please try again.")
+            
+# 4. Render the UI
+with st.sidebar:
+    st.divider()
+    if not st.session_state.whoop_token:
+        auth_link = whoop.get_authorization_url()
+        st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True, type="primary")
+    else:
+        st.success("✅ Whoop Synced")
+        
+        # --- NEW: CLINICAL DATA EXPORT ---
+        st.divider()
+        st.markdown("### 🖨️ Clinical Export")
+        st.caption("Generate a unified telemetry snapshot for your clinical team.")
+        
+        try:
+            # Calculate standard clinical metrics from the Dexcom dataframe
+            avg_glucose = int(full_data['Glucose_Value'].mean())
+            std_dev = int(full_data['Glucose_Value'].std())
+            
+            # Safely grab Whoop metrics for the export
+            w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
+            w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
+            w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
+            
+            # Construct the unified JSON payload
+            clinical_snapshot = {
+                "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "active_context": st.session_state.current_context,
+                "schedule_load": {
+                    "meetings_next_8h": meeting_count,
+                    "weekend_window_active": logic.is_weekend_window()
+                },
+                "metabolic_telemetry_24h": {
+                    "current_glucose_mgdl": int(latest['Glucose_Value']),
+                    "trend_velocity": latest['Trend'],
+                    "average_glucose_mgdl": avg_glucose,
+                    "standard_deviation": std_dev
+                },
+                "systemic_resilience": {
+                    "whoop_recovery_pct": w_rec,
+                    "whoop_sleep_perf_pct": w_sleep,
+                    "whoop_day_strain": w_strain
+                }
+            }
+            
+            # Convert dict to a formatted JSON string
+            json_export = json.dumps(clinical_snapshot, indent=4)
+            
+            # The native Streamlit download button
+            st.download_button(
+                label="📥 Download JSON Snapshot",
+                data=json_export,
+                file_name=f"TLDH_Clinical_Snapshot_{datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.warning("Awaiting full data sync to enable export.")
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
