@@ -30,14 +30,12 @@ styles.apply_theme()
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     try:
-        # First, try the cutting-edge preview
         target_model = 'gemini-3-flash-preview'
         test_model = genai.GenerativeModel(target_model)
         test_model.generate_content("Ping") 
         active_model_name = target_model
         model_status = "✨ GEMINI 3.0 FLASH (PREVIEW) ONLINE"
     except Exception:
-        # FIX: Use the rolling alias instead of a hardcoded deprecated version
         active_model_name = 'gemini-2.0-flash'
         model_status = "⚡ PRODUCTION: GEMINI 2.0 FLASH ONLINE"
 
@@ -50,18 +48,10 @@ except Exception as e:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 3. CONTEXT STATE MANAGEMENT
+# 3. CONTEXT STATE & AUTH LOGIC
 # -----------------------------------------------------------------------------
 if "current_context" not in st.session_state:
     st.session_state.current_context = "Normal"
-
-with st.sidebar:
-    st.header("System Monitor")
-    st.caption(f"**AI Engine:**\n{model_status}")
-    st.divider()
-    st.info("The Hub correlates biological telemetry with lifestyle context to offload cognitive strain.")
-
-# --- WHOOP AUTH LOGIC ---
 
 # 1. Initialize the state variable FIRST
 if "whoop_token" not in st.session_state:
@@ -84,66 +74,7 @@ if "code" in st.query_params and not st.session_state.whoop_token:
             st.query_params.clear() # Scrub the URL clean
             st.rerun()
         else:
-            st.sidebar.error("Whoop Auth Failed. Please try again.")
-
-# 4. Render the UI
-with st.sidebar:
-    st.divider()
-    if not st.session_state.whoop_token:
-        auth_link = whoop.get_authorization_url()
-        st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True, type="primary")
-    else:
-        st.success("✅ Whoop Synced")
-        
-        # --- NEW: CLINICAL DATA EXPORT ---
-        st.divider()
-        st.markdown("### 🖨️ Clinical Export")
-        st.caption("Generate a unified telemetry snapshot for your clinical team.")
-        
-        try:
-            # Calculate standard clinical metrics from the Dexcom dataframe
-            avg_glucose = int(full_data['Glucose_Value'].mean())
-            std_dev = int(full_data['Glucose_Value'].std())
-            
-            # Safely grab Whoop metrics for the export
-            w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
-            w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
-            w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
-            
-            # Construct the unified JSON payload
-            clinical_snapshot = {
-                "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "active_context": st.session_state.current_context,
-                "schedule_load": {
-                    "meetings_next_8h": meeting_count,
-                    "weekend_window_active": logic.is_weekend_window()
-                },
-                "metabolic_telemetry_24h": {
-                    "current_glucose_mgdl": int(latest['Glucose_Value']),
-                    "trend_velocity": latest['Trend'],
-                    "average_glucose_mgdl": avg_glucose,
-                    "standard_deviation": std_dev
-                },
-                "systemic_resilience": {
-                    "whoop_recovery_pct": w_rec,
-                    "whoop_sleep_perf_pct": w_sleep,
-                    "whoop_day_strain": w_strain
-                }
-            }
-            
-            # Convert dict to a formatted JSON string
-            json_export = json.dumps(clinical_snapshot, indent=4)
-            
-            # The native Streamlit download button
-            st.download_button(
-                label="📥 Download JSON Snapshot",
-                data=json_export,
-                file_name=f"TLDH_Clinical_Snapshot_{datetime.now().strftime('%Y%m%d')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-        except Exception as e:
-            st.warning("Awaiting full data sync to enable export.")
+            st.error("Whoop Auth Failed. Please try again.")
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
@@ -174,7 +105,7 @@ except Exception as e:
     st.error(f"Data loading failed: {e}")
 
 # -----------------------------------------------------------------------------
-# 5. HEADER UI (Clean & Text-Only)
+# 5. HEADER UI & HAMBURGER MENU
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason)) 
@@ -189,7 +120,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    # Adjusted columns to fit the hamburger menu perfectly on the right edge
     p_col1, p_col2, p_col3, p_col4 = st.columns([1.5, 2.5, 3, 1.5])
     
     with p_col1:
@@ -210,7 +140,7 @@ with st.container(border=True):
                 st.rerun()
                 
     with p_col4:
-        # The new Hamburger Menu Popover
+        # Hamburger Menu Popover
         with st.popover("☰ MENU", use_container_width=True):
             st.markdown("##### 🔌 Integrations")
             
@@ -220,7 +150,7 @@ with st.container(border=True):
                 st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
             else:
                 if st.button("✅ Whoop Synced", use_container_width=True):
-                    st.rerun() # Acts as a manual data refresh
+                    st.rerun() 
             
             st.divider()
             
@@ -313,19 +243,15 @@ if st.session_state.active_view == "Daily Briefing":
 
     with st.spinner("Compiling Executive Briefing..."):
         try:
-            # Gather current context
-            latest = full_data.iloc[-1]
             bg_val = int(latest['Glucose_Value'])
             trend = latest['Trend']
 
-            # Extract deep Whoop metrics
             rec_score, sleep_perf, strain = "Unknown", "Unknown", "Unknown"
             if st.session_state.whoop_token and whoop_metrics:
                 rec_score = whoop_metrics.get('score', {}).get('recovery_score', "Unknown")
                 sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', "Unknown")
                 strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1)
 
-            # Determine the structural tone of the day
             is_weekend = logic.is_weekend_window()
             day_type = "Weekend / Recharge Day" if is_weekend else "Standard Workday"
 
@@ -346,40 +272,33 @@ if st.session_state.active_view == "Daily Briefing":
             Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
             """
 
-            # Generate using the pre-configured global model
             response = model_json.generate_content(prompt)
             clean_text = response.text.strip()
             
-            # Scrub Markdown fences if the API includes them
-            if clean_text.startswith("```json"):
-                clean_text = clean_text[7:]
-            if clean_text.endswith("```"):
-                clean_text = clean_text[:-3]
+            # Replaced the .startswith method with safe replacement to avoid parser cutoff
+            markdown_fence = chr(96) * 3
+            clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
             
-            briefing_data = json.loads(clean_text.strip())
+            briefing_data = json.loads(clean_text)
 
-            # Display the briefing cleanly
             st.info(f"**1. Load & Resilience:** {html.escape(briefing_data.get('bullet_1', ''))}")
             st.warning(f"**2. Metabolic State:** {html.escape(briefing_data.get('bullet_2', ''))}")
             st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
 
         except Exception as e:
             st.error(f"Failed to generate briefing. Please check API connection. System error: {e}")
-            logger.error(f"Briefing generation error: {e}")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     
     st.markdown("#### 🧬 Metabolic Baseline")
-    
     cols_dex = st.columns(2)
     cols_dex[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
     cols_dex[1].metric("Trend", latest['Trend'])
 
     if st.session_state.whoop_token and whoop_metrics:
         st.markdown("#### ⚡ Systemic Resilience")
-        
         cols_whoop = st.columns(5)
         
         recovery_val = whoop_metrics.get('score', {}).get('recovery_score', 0)
@@ -397,16 +316,9 @@ elif st.session_state.active_view == "Wellness":
         cols_whoop[3].metric("HRV (ms)", hrv_val)
         cols_whoop[4].metric("Resting HR", rhr_val, delta_color="inverse")
     else:
-        st.info("🔗 Click the Whoop Synced button in the header above to refresh your real-time Resilience metrics.")
+        st.info("🔗 Open the ☰ MENU above to connect Whoop and view live resilience metrics.")
     
-    time_window = st.radio(
-        "Time Range", 
-        options=["3h", "6h", "12h", "24h"], 
-        index=1,
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    
+    time_window = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
     row_mapping = {"3h": 36, "6h": 72, "12h": 144, "24h": 288}
     plot_data = full_data.tail(row_mapping[time_window])
 
@@ -415,46 +327,26 @@ elif st.session_state.active_view == "Wellness":
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
     fig.add_hline(y=70, line_dash="dash", line_color="#ED8796", annotation_text="LOW GATES")
     
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='gray'),
-        height=400, 
-        margin=dict(l=0, r=0, t=30, b=0), 
-        yaxis_title="mg/dL",
-        xaxis=dict(fixedrange=True),
-        yaxis=dict(fixedrange=True)
-    )
+    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 # --- VIEW B: SCHEDULE ---
 elif st.session_state.active_view == "Schedule":
     st.markdown("### 🗓️ Cognitive Load & Schedule Density")
-    
     h1, h2, h3, h4 = st.columns(4)
     card_css = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
     
-    t_status = '🟢 SAFE'
-    if st.session_state.current_context == 'Travel':
-        t_status = '✈️ SHIFTING'
-        
+    t_status = '✈️ SHIFTING' if st.session_state.current_context == 'Travel' else '🟢 SAFE'
     m_status = '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'
     
     density_label = "🟢 LIGHT"
-    if meeting_count >= 7:
-        density_label = "🔴 CRITICAL"
-    elif meeting_count >= 4:
-        density_label = "🟡 ELEVATED"
+    if meeting_count >= 7: density_label = "🔴 CRITICAL"
+    elif meeting_count >= 4: density_label = "🟡 ELEVATED"
 
-    with h1: 
-        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>1 HOUR</div><div style='font-weight:800;'>{t_status}</div></div>", unsafe_allow_html=True)
-    with h2: 
-        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>4 HOURS</div><div style='font-weight:800;'>{m_status}</div></div>", unsafe_allow_html=True)
-    with h3: 
-        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>24 HOURS</div><div style='font-weight:800;'>🟢 GOOD</div></div>", unsafe_allow_html=True)
-    with h4:
-        st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>MEETINGS</div><div style='font-weight:800;'>{meeting_count} ({density_label})</div></div>", unsafe_allow_html=True)
-
+    with h1: st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>1 HOUR</div><div style='font-weight:800;'>{t_status}</div></div>", unsafe_allow_html=True)
+    with h2: st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>4 HOURS</div><div style='font-weight:800;'>{m_status}</div></div>", unsafe_allow_html=True)
+    with h3: st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>24 HOURS</div><div style='font-weight:800;'>🟢 GOOD</div></div>", unsafe_allow_html=True)
+    with h4: st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>MEETINGS</div><div style='font-weight:800;'>{meeting_count} ({density_label})</div></div>", unsafe_allow_html=True)
     st.markdown("---")
     st.info(f"**Agentic Insight:** The Risk Engine is currently factoring in **{meeting_count} meetings** over the next 8 hours to adjust your glycemic sensitivity threshold.")
 
@@ -471,7 +363,6 @@ elif st.session_state.active_view == "Assistant":
         if st.form_submit_button("Analyze Correlation", type="primary") and text_input:
             with st.spinner("Correlating subjective report with objective telemetry..."):
                 try:
-                    # 1. Rebuild the live clinical snapshot safely
                     avg_glucose = int(full_data['Glucose_Value'].mean())
                     std_dev = int(full_data['Glucose_Value'].std())
                     w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
@@ -490,7 +381,6 @@ elif st.session_state.active_view == "Assistant":
                         "whoop_day_strain": w_strain
                     }
                     
-                    # 2. Inject the data directly into the AI's brain
                     prompt = f"""
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                     Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
@@ -501,18 +391,34 @@ elif st.session_state.active_view == "Assistant":
                     Return a valid JSON object with EXACTLY these keys:
                     - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                     - "summary": "A 3-word summary."
-                    - "scores": {{"bio_strain": int 1-10, "cog_load": int 1-10}}
+                    - "scores": {{"bio_strain": 5, "cog_load": 5}}
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    # 3. Generate the response
                     response = model_json.generate_content(prompt)
                     clean_text = response.text.strip()
                     
-                    # Scrub Markdown fences if they exist
-                    if clean_text.startswith("
-http://googleusercontent.com/immersive_entry_chip/0
-http://googleusercontent.com/immersive_entry_chip/1
+                    # Safe replacement to avoid markdown parser cutoff
+                    markdown_fence = chr(96) * 3
+                    clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
+                    
+                    parsed = json.loads(clean_text)
+                    parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    st.session_state.journal_history.insert(0, parsed)
+                    st.rerun()
+                except Exception as e: 
+                    st.error(f"Correlation Analysis failed: {e}")
+                    
+    if st.session_state.journal_history:
+        entry = st.session_state.journal_history[0]
+        st.success(f"**Agentic Insight:** {html.escape(entry.get('reply', ''))}")
+        
+        sc = entry.get("scores", {"bio_strain": 0, "cog_load": 0})
+        c1, c2, c3 = st.columns(3)
+        c1.metric("🧬 Bio-Strain", f"{sc.get('bio_strain', 0)}/10")
+        c2.metric("🧠 Cog-Load", f"{sc.get('cog_load', 0)}/10")
+        c3.metric("📌 Status", html.escape(entry.get("summary", "")))
+        st.info(f"**📉 Horizon Scan:** {html.escape(entry.get('impact_prediction', ''))}")
 
 # --- VIEW D: SLEEP IMPACT ---
 elif st.session_state.active_view == "Sleep":
@@ -523,23 +429,18 @@ elif st.session_state.active_view == "Sleep":
         std_dev = int(overnight_df['Glucose_Value'].std())
         
         s_col1, s_col2 = st.columns(2)
-        with s_col1:
-            st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
-        with s_col2:
-            st.metric("Overnight Volatility", f"±{std_dev} mg/dL", delta="Stable" if std_dev < 15 else "Erratic", delta_color="normal" if std_dev < 15 else "inverse")
-
+        with s_col1: st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
+        with s_col2: st.metric("Overnight Volatility", f"±{std_dev} mg/dL", delta="Stable" if std_dev < 15 else "Erratic", delta_color="normal" if std_dev < 15 else "inverse")
         st.markdown("---")
-        st.markdown("#### Overnight Stability Trend")
+        
         sleep_fig = go.Figure()
         sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
         sleep_fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'))
         st.plotly_chart(sleep_fig, use_container_width=True)
         
-        if std_dev > 20 and sleep_perf < 70:
-            st.warning("⚠️ **Agentic Insight:** High volatility detected. Consider a +20% basal temporary increase.")
-        else:
-            st.success("✅ **Agentic Insight:** Stable overnight metabolic state.")
+        if std_dev > 20 and sleep_perf < 70: st.warning("⚠️ **Agentic Insight:** High volatility detected. Consider a +20% basal temporary increase.")
+        else: st.success("✅ **Agentic Insight:** Stable overnight metabolic state.")
     else:
-        st.info("🔗 Connect Whoop to enable Sleep Impact correlation.")
+        st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
