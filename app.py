@@ -67,6 +67,13 @@ if not st.session_state.whoop_token:
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
         auth_code = st.query_params["code"]
+        returned_state = st.query_params.get("state")
+        expected_state = st.session_state.get("oauth_state")
+
+        if not expected_state or returned_state != expected_state:
+            st.error("OAuth State Mismatch. Potential CSRF Attack.")
+            st.stop()
+
         token_data = whoop.get_access_token(auth_code)
         
         # Safety check: ensure Whoop actually returned a token
@@ -148,7 +155,10 @@ with st.container(border=True):
             
             # 1. Whoop Sync Logic inside the menu
             if not st.session_state.whoop_token:
-                auth_link = whoop.get_authorization_url()
+                import secrets
+                if "oauth_state" not in st.session_state:
+                    st.session_state.oauth_state = secrets.token_urlsafe(16)
+                auth_link = whoop.get_authorization_url(st.session_state.oauth_state)
                 st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
             else:
                 if st.button("✅ Whoop Synced", use_container_width=True):

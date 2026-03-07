@@ -17,14 +17,14 @@ REDIRECT_URI = st.secrets["WHOOP_REDIRECT_URI"]
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
-def get_authorization_url():
+def get_authorization_url(state):
     """Generates the Whoop login URL for the OAuth2 handshake."""
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": "offline read:recovery read:cycles read:sleep read:workout",
-        "state": "tldh_auth_state"
+        "state": state
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
