@@ -247,7 +247,7 @@ if audio_bytes:
                     "whoop_day_strain": w_strain
                 }
                 
-                prompt = f"""
+                system_instruction = f"""
                 You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                 Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                 
@@ -259,13 +259,19 @@ if audio_bytes:
                 - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                 """
                 
+                local_model = genai.GenerativeModel(
+                    active_model_name,
+                    generation_config={"response_mime_type": "application/json"},
+                    system_instruction=system_instruction
+                )
+
                 # Bundle the text prompt and raw audio bytes natively into Gemini
                 audio_part = {
                     "mime_type": "audio/wav",
                     "data": audio_bytes
                 }
                 
-                response = model_json.generate_content([prompt, audio_part])
+                response = local_model.generate_content([audio_part])
                 clean_text = response.text.strip()
                 
                 markdown_fence = chr(96) * 3
@@ -464,13 +470,11 @@ elif st.session_state.active_view == "Assistant":
                         "whoop_day_strain": w_strain
                     }
                     
-                    prompt = f"""
+                    system_instruction = f"""
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                     Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                     
-                    The user just reported the following subjective state: "{text_input}"
-                    
-                    Correlate their subjective report with their objective telemetry. 
+                    Correlate the user's subjective report with their objective telemetry.
                     Return a valid JSON object with EXACTLY these keys:
                     - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                     - "summary": "A 3-word summary."
@@ -478,7 +482,13 @@ elif st.session_state.active_view == "Assistant":
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    response = model_json.generate_content(prompt)
+                    local_model = genai.GenerativeModel(
+                        active_model_name,
+                        generation_config={"response_mime_type": "application/json"},
+                        system_instruction=system_instruction
+                    )
+
+                    response = local_model.generate_content(text_input)
                     clean_text = response.text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
