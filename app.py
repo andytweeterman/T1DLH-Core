@@ -247,25 +247,31 @@ if audio_bytes:
                     "whoop_day_strain": w_strain
                 }
                 
-                prompt = f"""
+                system_instruction = """
                 You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
-                Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
-                
-                The user just provided an audio brain dump. Listen to the audio and correlate their subjective state with their objective telemetry. 
+                Listen to the user's audio brain dump and correlate their subjective state with their objective telemetry.
                 Return a valid JSON object with EXACTLY these keys:
                 - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                 - "summary": "A 3-word summary."
-                - "scores": {{"bio_strain": 5, "cog_load": 5}}
+                - "scores": {"bio_strain": 5, "cog_load": 5}
                 - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                 """
                 
+                audio_model = genai.GenerativeModel(
+                    active_model_name,
+                    generation_config={"response_mime_type": "application/json"},
+                    system_instruction=system_instruction
+                )
+
+                user_prompt = f"Real-time hardware telemetry: {json.dumps(live_context)}"
+
                 # Bundle the text prompt and raw audio bytes natively into Gemini
                 audio_part = {
                     "mime_type": "audio/wav",
                     "data": audio_bytes
                 }
                 
-                response = model_json.generate_content([prompt, audio_part])
+                response = audio_model.generate_content([user_prompt, audio_part])
                 clean_text = response.text.strip()
                 
                 markdown_fence = chr(96) * 3
@@ -338,24 +344,33 @@ if st.session_state.active_view == "Daily Briefing":
             is_weekend = logic.is_weekend_window()
             day_type = "Weekend / Recharge Day" if is_weekend else "Standard Workday"
 
-            prompt = f"""
-            You are an executive performance coach. Write a daily briefing based on these metrics:
+            system_instruction = """
+            You are an executive performance coach. Write a daily briefing based on the provided metrics.
+            Return a valid JSON string containing EXACTLY this structure:
+            {
+              "bullet_1": "Actionable insight combining schedule load and Whoop recovery/sleep.",
+              "bullet_2": "Actionable insight regarding metabolic readiness (glucose) and current strain.",
+              "bullet_3": "A single sentence recommending a specific action to take right now."
+            }
+            Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
+            """
+
+            briefing_model = genai.GenerativeModel(
+                active_model_name,
+                generation_config={"response_mime_type": "application/json"},
+                system_instruction=system_instruction
+            )
+
+            user_prompt = f"""
+            Metrics:
             - Day Type: {day_type}
             - Schedule Density: {meeting_count} meetings.
             - Whoop Metrics: {rec_score}% Recovery, {sleep_perf}% Sleep, {strain} Day Strain.
             - Current Glucose: {bg_val} mg/dL, Trend: {trend}.
             - Active Context: {st.session_state.current_context}
-
-            Return a valid JSON string containing EXACTLY this structure:
-            {{
-              "bullet_1": "Actionable insight combining schedule load and Whoop recovery/sleep.",
-              "bullet_2": "Actionable insight regarding metabolic readiness (glucose) and current strain.",
-              "bullet_3": "A single sentence recommending a specific action to take right now."
-            }}
-            Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
             """
 
-            response = model_json.generate_content(prompt)
+            response = briefing_model.generate_content(user_prompt)
             clean_text = response.text.strip()
             
             # Replaced the .startswith method with safe replacement to avoid parser cutoff
@@ -464,21 +479,25 @@ elif st.session_state.active_view == "Assistant":
                         "whoop_day_strain": w_strain
                     }
                     
-                    prompt = f"""
+                    system_instruction = """
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
-                    Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
-                    
-                    The user just reported the following subjective state: "{text_input}"
-                    
-                    Correlate their subjective report with their objective telemetry. 
+                    Correlate the user's subjective report with their objective telemetry.
                     Return a valid JSON object with EXACTLY these keys:
                     - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                     - "summary": "A 3-word summary."
-                    - "scores": {{"bio_strain": 5, "cog_load": 5}}
+                    - "scores": {"bio_strain": 5, "cog_load": 5}
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    response = model_json.generate_content(prompt)
+                    text_model = genai.GenerativeModel(
+                        active_model_name,
+                        generation_config={"response_mime_type": "application/json"},
+                        system_instruction=system_instruction
+                    )
+
+                    user_prompt = f"Real-time hardware telemetry: {json.dumps(live_context)}\nUser subjective state: {text_input}"
+
+                    response = text_model.generate_content(user_prompt)
                     clean_text = response.text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
