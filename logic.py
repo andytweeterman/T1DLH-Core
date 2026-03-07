@@ -25,6 +25,7 @@ def fetch_health_data():
 
 def apply_context_modifiers(df, context):
     """Injects real-life chaos into the base telemetry."""
+    # Do not set np.random.seed here to maintain non-deterministic behavior for tests
     noise = np.random.normal(0, 3, len(df)) 
     
     if context == "Stressed":
@@ -43,8 +44,8 @@ def apply_context_modifiers(df, context):
     elif context == "Travel":
         spikes = np.zeros(len(df))
         indices = np.random.choice(range(len(df)), size=3, replace=False)
+        x = np.arange(len(df))
         for idx in indices:
-            x = np.arange(len(df))
             spikes += 60 * np.exp(-0.5 * ((x - idx) / 6)**2) 
         df['Glucose_Value'] = df['Glucose_Value'] + spikes + noise
     else:
