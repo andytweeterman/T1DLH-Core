@@ -60,8 +60,40 @@ with st.sidebar:
     st.info("The Hub correlates biological telemetry with lifestyle context to offload cognitive strain.")
 
 # --- WHOOP AUTH LOGIC ---
+
+# 1. Initialize the state variable FIRST
 if "whoop_token" not in st.session_state:
     st.session_state.whoop_token = None
+
+# 2. Try to get a valid token from the vault silently
+if not st.session_state.whoop_token:
+    st.session_state.whoop_token = whoop.get_valid_access_token()
+
+# 3. If the vault is empty, check if we are returning from a manual login
+if "code" in st.query_params and not st.session_state.whoop_token:
+    with st.spinner("Finalizing Whoop Connection..."):
+        auth_code = st.query_params["code"]
+        token_data = whoop.get_access_token(auth_code)
+        
+        # Safety check: ensure Whoop actually returned a token
+        if token_data and "access_token" in token_data:
+            st.session_state.whoop_token = token_data.get("access_token")
+            whoop.save_tokens(token_data) # Save it to the vault!
+            st.query_params.clear() # Scrub the URL clean
+            st.rerun()
+        else:
+            st.sidebar.error("Whoop Auth Failed. Please try again.")
+
+# 4. Render the UI
+with st.sidebar:
+    st.divider()
+    if not st.session_state.whoop_token:
+        auth_link = whoop.get_authorization_url()
+        st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True, type="primary")
+    else:
+        st.success("✅ Whoop Synced")
+        if st.button("Refresh Biometrics"):
+            st.rerun()
 
 query_params = st.query_params
 if "code" in query_params and not st.session_state.whoop_token:

@@ -68,13 +68,42 @@ def calculate_schedule_load(meeting_count):
         return 1.15, "🟡 ELEVATED LOAD: Moderate schedule density."
     return 1.0, "🟢 LIGHT LOAD: Schedule is clear."
 
-def get_whoop_risk_modifier(recovery_score):
-    """Translates Whoop Recovery into a physiological risk score."""
-    if recovery_score < 34:
-        return 1.5, "WHOOP: RED RECOVERY."
-    elif recovery_score < 67:
-        return 1.2, "WHOOP: YELLOW RECOVERY."
-    return 1.0, "WHOOP: GREEN RECOVERY."
+def get_whoop_risk_modifier(whoop_metrics):
+    """
+    Translates Whoop Recovery, Strain, and Sleep into physiological risk vectors.
+    Returns (multiplier, status_string)
+    """
+    # Extract the deep metrics safely
+    recovery = whoop_metrics.get('score', {}).get('recovery_score', 100)
+    strain = whoop_metrics.get('score', {}).get('day_strain', 0.0)
+    sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 100)
+
+    multiplier = 1.0
+    status_tags = []
+
+    # 1. Recovery Gates (Systemic Readiness)
+    if recovery < 34:
+        multiplier += 0.3
+        status_tags.append("🔴 RED RECOVERY")
+    elif recovery < 67:
+        multiplier += 0.1
+        status_tags.append("🟡 YELLOW RECOVERY")
+
+    # 2. Sleep Performance (Insulin Resistance Vector)
+    if sleep_perf < 70:
+        multiplier += 0.2
+        status_tags.append("💤 SLEEP DEBT (High Resistance)")
+
+    # 3. Day Strain (Insulin Sensitivity Vector)
+    # High physical exertion makes you hyper-sensitive to insulin later
+    if strain > 14.0:
+        multiplier -= 0.25 
+        status_tags.append("⚡ HIGH STRAIN (Watch for Lows)")
+
+    # Combine tags for the UI
+    final_status = " | ".join(status_tags) if status_tags else "🟢 FULLY CHARGED"
+    
+    return multiplier, final_status
 
 def is_weekend_window():
     """Checks if the current time falls between Fri 5PM and Mon 8AM."""

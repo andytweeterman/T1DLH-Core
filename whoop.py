@@ -1,7 +1,10 @@
-import streamlit as st
+import json
+import time
 import requests
-import base64
-from urllib.parse import urlencode
+import streamlit as st
+from urllib.parse import urlencode  # <-- THE FIX
+
+TOKEN_FILE = "whoop_tokens.json"
 
 # Load credentials from Streamlit secrets
 CLIENT_ID = st.secrets["WHOOP_CLIENT_ID"]
@@ -43,3 +46,49 @@ def fetch_whoop_recovery(token):
         data = response.json()
         return data[0] if data else None
     return None
+
+def save_tokens(token_data):
+    """Calculates expiration time and saves to a local JSON vault."""
+    # Add an expiration timestamp (current time + expires_in seconds)
+    token_data['expires_at'] = time.time() + token_data.get('expires_in', 3600)
+    with open(TOKEN_FILE, 'w') as f:
+        json.dump(token_data, f)
+
+def load_tokens():
+    """Loads tokens from the vault."""
+    try:
+        with open(TOKEN_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+
+def refresh_access_token(refresh_token):
+    """Silently trades the refresh token for a fresh access token."""
+    client_id = st.secrets["WHOOP_CLIENT_ID"]
+    client_secret = st.secrets["WHOOP_CLIENT_SECRET"]
+    
+    response = requests.post("https://api.prod.whoop.com/oauth/oauth2/token", data={
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+        "client_secret": client_secret
+    })
+    
+    if response.status_code == 200:
+        new_tokens = response.json()
+        save_tokens(new_tokens)
+        return new_tokens['access_token']
+    else:
+        return None
+
+def get_valid_access_token():
+    """The Master Auth Function: Gets a token, refreshing it if necessary."""
+    tokens = load_tokens()
+    if not tokens:
+        return None
+    
+    # If the token expires in the next 5 minutes, refresh it now
+    if time.time() > tokens.get('expires_at', 0) - 300:
+        return refresh_access_token(tokens.get('refresh_token'))
+    
+    return tokens['access_token']
