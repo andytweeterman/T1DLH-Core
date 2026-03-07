@@ -464,11 +464,9 @@ elif st.session_state.active_view == "Assistant":
                         "whoop_day_strain": w_strain
                     }
                     
-                    prompt = f"""
+                    sys_instruct = f"""
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                     Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
-                    
-                    The user just reported the following subjective state: "{text_input}"
                     
                     Correlate their subjective report with their objective telemetry. 
                     Return a valid JSON object with EXACTLY these keys:
@@ -478,7 +476,13 @@ elif st.session_state.active_view == "Assistant":
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    response = model_json.generate_content(prompt)
+                    secure_model = genai.GenerativeModel(
+                        active_model_name,
+                        system_instruction=sys_instruct,
+                        generation_config={"response_mime_type": "application/json"}
+                    )
+
+                    response = secure_model.generate_content(text_input)
                     clean_text = response.text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
