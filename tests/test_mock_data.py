@@ -65,8 +65,7 @@ def test_get_mock_cgm_deterministic():
     if hasattr(fetch_health_data, 'clear'):
         fetch_health_data.clear()
     df1 = fetch_health_data()
-    if hasattr(fetch_health_data, 'clear'):
-        fetch_health_data.clear()
+    fetch_health_data.clear()
     df2 = fetch_health_data()
 
     # It's extremely unlikely these would be exactly the same
