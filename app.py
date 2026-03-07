@@ -66,17 +66,29 @@ if not st.session_state.whoop_token:
 # 3. If the vault is empty, check if we are returning from a manual login
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
-        auth_code = st.query_params["code"]
-        token_data = whoop.get_access_token(auth_code)
+        # Validate OAuth state to prevent CSRF attacks
+        url_state = st.query_params.get("state")
+        session_state_token = st.session_state.get("oauth_state")
         
-        # Safety check: ensure Whoop actually returned a token
-        if token_data and "access_token" in token_data:
-            st.session_state.whoop_token = token_data.get("access_token")
-            whoop.save_tokens(token_data) # Save it to the vault!
-            st.query_params.clear() # Scrub the URL clean
-            st.rerun()
+        if not url_state or not session_state_token or url_state != session_state_token:
+            st.error("Invalid state parameter. Authentication aborted to prevent CSRF.")
+            # Clear invalid params
+            st.query_params.clear()
         else:
-            st.error("Whoop Auth Failed. Please try again.")
+            # Clear the state from session state so it can't be reused
+            del st.session_state["oauth_state"]
+
+            auth_code = st.query_params["code"]
+            token_data = whoop.get_access_token(auth_code)
+
+            # Safety check: ensure Whoop actually returned a token
+            if token_data and "access_token" in token_data:
+                st.session_state.whoop_token = token_data.get("access_token")
+                whoop.save_tokens(token_data) # Save it to the vault!
+                st.query_params.clear() # Scrub the URL clean
+                st.rerun()
+            else:
+                st.error("Whoop Auth Failed. Please try again.")
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING

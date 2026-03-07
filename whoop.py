@@ -3,6 +3,7 @@ import time
 import requests
 import streamlit as st
 from urllib.parse import urlencode
+import secrets
 
 # Path for the local token vault
 TOKEN_FILE = "whoop_tokens.json"
@@ -19,12 +20,17 @@ TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
 def get_authorization_url():
     """Generates the Whoop login URL for the OAuth2 handshake."""
+    state_token = secrets.token_urlsafe(16)
+
+    # Store the token in session state for validation on callback
+    st.session_state.oauth_state = state_token
+
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": "offline read:recovery read:cycles read:sleep read:workout",
-        "state": "tldh_auth_state"
+        "state": state_token
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
