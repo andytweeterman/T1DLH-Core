@@ -4,3 +4,4 @@ plotly
 google-generativeai
 numpy
 requests==2.31.0
+audio-recorder-streamlit==0.4.3

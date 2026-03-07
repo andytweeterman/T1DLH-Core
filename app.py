@@ -7,8 +7,10 @@ import logic
 import json
 import logging
 import whoop
+import hashlib
 from datetime import datetime
 import calendar_sync
+from audio_recorder_streamlit import audio_recorder
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
@@ -204,6 +206,87 @@ with st.container(border=True):
 st.divider()
 
 # -----------------------------------------------------------------------------
+# 5.5 VOICE ASSISTANT (GLOBAL PERSISTENT UI)
+# -----------------------------------------------------------------------------
+st.markdown("### 🎙️ Agentic Voice Dump")
+st.caption("Tap the mic to log an unstructured voice note. The AI will instantly correlate it with your live biology.")
+
+v_col1, v_col2 = st.columns([1, 10])
+with v_col1:
+    audio_bytes = audio_recorder(
+        text="",
+        recording_color="#ED8796",
+        neutral_color="#8B5CF6",
+        icon_size="2x"
+    )
+
+if audio_bytes:
+    # Hash the bytes to prevent Streamlit from constantly re-processing the same audio on every interaction
+    audio_hash = hashlib.md5(audio_bytes).hexdigest()
+    
+    if audio_hash != st.session_state.get("last_audio_hash"):
+        st.session_state.last_audio_hash = audio_hash
+        
+        with st.spinner("Processing Voice Dump and Correlating Telemetry..."):
+            try:
+                avg_glucose = int(full_data['Glucose_Value'].mean())
+                std_dev = int(full_data['Glucose_Value'].std())
+                w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
+                w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
+                w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
+                
+                live_context = {
+                    "active_context": st.session_state.current_context,
+                    "meetings_next_8h": meeting_count,
+                    "is_weekend_window": logic.is_weekend_window(),
+                    "current_glucose": int(latest['Glucose_Value']),
+                    "glucose_trend": latest['Trend'],
+                    "glucose_volatility_std_dev": std_dev,
+                    "whoop_recovery": w_rec,
+                    "whoop_sleep": w_sleep,
+                    "whoop_day_strain": w_strain
+                }
+                
+                prompt = f"""
+                You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
+                Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
+                
+                The user just provided an audio brain dump. Listen to the audio and correlate their subjective state with their objective telemetry. 
+                Return a valid JSON object with EXACTLY these keys:
+                - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
+                - "summary": "A 3-word summary."
+                - "scores": {{"bio_strain": 5, "cog_load": 5}}
+                - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
+                """
+                
+                # Bundle the text prompt and raw audio bytes natively into Gemini
+                audio_part = {
+                    "mime_type": "audio/wav",
+                    "data": audio_bytes
+                }
+                
+                response = model_json.generate_content([prompt, audio_part])
+                clean_text = response.text.strip()
+                
+                markdown_fence = chr(96) * 3
+                clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
+                
+                parsed = json.loads(clean_text)
+                parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                
+                if "journal_history" not in st.session_state: 
+                    st.session_state.journal_history = []
+                st.session_state.journal_history.insert(0, parsed)
+                
+                # Auto-switch to the Assistant tab so they can see the generated insight
+                st.session_state.active_view = "Assistant"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Voice Analysis failed: {e}")
+
+st.divider()
+
+# -----------------------------------------------------------------------------
 # 6. NAVIGATION
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state:
@@ -358,7 +441,7 @@ elif st.session_state.active_view == "Assistant":
     if "journal_history" not in st.session_state: st.session_state.journal_history = []
     
     with st.form("journal_form", clear_on_submit=True):
-        text_input = st.text_area("Life Download:", placeholder="E.g., 'Just finished rebuilding the deck doors. Legs feel heavy.'")
+        text_input = st.text_area("Life Download (Text Fallback):", placeholder="E.g., 'Just finished rebuilding the deck doors. Legs feel heavy.'")
         
         if st.form_submit_button("Analyze Correlation", type="primary") and text_input:
             with st.spinner("Correlating subjective report with objective telemetry..."):
