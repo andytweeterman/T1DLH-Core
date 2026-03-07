@@ -5,16 +5,11 @@ import google.generativeai as genai
 import styles
 import logic
 import json
-import logging
 import whoop
 import hashlib
 from datetime import datetime
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
-
-# Configure logging
-logging.basicConfig(level=logging.ERROR)
-logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # 1. PAGE SETUP & THEME
