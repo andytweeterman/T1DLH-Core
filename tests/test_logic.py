@@ -1,11 +1,13 @@
 import pytest
+import unittest
+from unittest.mock import patch
 import pandas as pd
 import numpy as np
 import sys
 import os
 from datetime import datetime, timedelta
 
-# Add the parent directory to sys.path to resolve 'logic' and 'whoop' imports
+# Add parent directory to path to import logic
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from logic import (
@@ -14,6 +16,10 @@ from logic import (
     calc_glycemic_risk,
     fetch_health_data
 )
+
+# =====================================================================
+# PYTEST FIXTURES & CORE LOGIC TESTS
+# =====================================================================
 
 # --- 1. TEST DATA GENERATION ---
 def test_fetch_health_data_structure():
@@ -26,18 +32,7 @@ def test_fetch_health_data_structure():
     assert df["Glucose_Value"].min() >= 65
     assert df["Glucose_Value"].max() <= 220
 
-# --- 2. TEST SCHEDULE LOAD LOGIC ---
-@pytest.mark.parametrize("meetings, expected_mult, label", [
-    (10, 1.3, "🔴 HIGH LOAD"),
-    (5, 1.15, "🟡 ELEVATED LOAD"),
-    (2, 1.0, "🟢 LIGHT LOAD"),
-])
-def test_schedule_load_calculation(meetings, expected_mult, label):
-    multiplier, status = calculate_schedule_load(meetings)
-    assert multiplier == expected_mult
-    assert label in status
-
-# --- 3. TEST WHOOP MODIFIER LOGIC ---
+# --- 2. TEST WHOOP MODIFIER LOGIC ---
 def test_whoop_modifier_red_recovery():
     """Test that a red recovery score increases the risk multiplier."""
     mock_whoop = {
@@ -61,11 +56,10 @@ def test_whoop_modifier_high_strain():
         }
     }
     multiplier, status = get_whoop_risk_modifier(mock_whoop)
-    # 1.0 base - 0.25 strain
-    assert multiplier == 0.75
+    assert multiplier == 0.75 # 1.0 base - 0.25 strain
     assert "⚡ HIGH STRAIN" in status
 
-# --- 4. TEST CORE RISK ENGINE (GATES) ---
+# --- 3. TEST CORE RISK ENGINE (GATES) ---
 def test_calc_glycemic_risk_critical_low():
     """Verify that glucose < 70 always triggers NEEDS ATTENTION."""
     # Create mock data ending in a low value
@@ -104,7 +98,6 @@ def test_calc_glycemic_risk_speaker_mode():
     assert status_speaker == "🔴 SPEAKER ALERT"
     assert color == "#ED8796"
 
-# --- 5. TEST RESILIENCE TO MISSING DATA ---
 def test_calc_glycemic_risk_no_whoop():
     """Ensure the engine doesn't crash if Whoop is not synced."""
     df = fetch_health_data()
@@ -112,3 +105,109 @@ def test_calc_glycemic_risk_no_whoop():
         calc_glycemic_risk(df, context="Normal", whoop_data=None)
     except Exception as e:
         pytest.fail(f"Risk engine crashed without Whoop data: {e}")
+
+# =====================================================================
+# UNITTEST CLASS: SCHEDULE LOAD & INTEGRATION
+# =====================================================================
+class TestLogicCalculateScheduleLoad(unittest.TestCase):
+    def test_calculate_schedule_load_high(self):
+        # meeting_count >= 7
+        for count in [7, 8, 10, 20]:
+            multiplier, message = calculate_schedule_load(count)
+            self.assertEqual(multiplier, 1.3)
+            self.assertIn("🔴 HIGH LOAD: Schedule density is critical", message)
+
+    def test_calculate_schedule_load_elevated(self):
+        # 4 <= meeting_count < 7
+        for count in [4, 5, 6]:
+            multiplier, message = calculate_schedule_load(count)
+            self.assertEqual(multiplier, 1.15)
+            self.assertIn("🟡 ELEVATED LOAD: Moderate schedule density", message)
+
+    def test_calculate_schedule_load_light(self):
+        # meeting_count < 4
+        for count in [0, 1, 2, 3]:
+            multiplier, message = calculate_schedule_load(count)
+            self.assertEqual(multiplier, 1.0)
+            self.assertEqual(message, "🟢 LIGHT LOAD: Schedule is clear.")
+
+    def test_calculate_schedule_load_negative(self):
+        # Edge case: negative meetings (should fall under light load)
+        for count in [-1, -5]:
+            multiplier, message = calculate_schedule_load(count)
+            self.assertEqual(multiplier, 1.0)
+            self.assertEqual(message, "🟢 LIGHT LOAD: Schedule is clear.")
+
+    @patch('logic.is_weekend_window')
+    @patch('logic.get_whoop_risk_modifier')
+    def test_calc_glycemic_risk_schedule_load_elevated(self, mock_whoop, mock_weekend):
+        # Ensure it's not a weekend so schedule load logic applies
+        mock_weekend.return_value = False
+        # Ensure whoop modifier doesn't trigger caution
+        mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
+
+        # Mock df with nominal values to pass safety thresholds
+        df = pd.DataFrame({
+            'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00'), pd.Timestamp('2023-01-01 10:10:00')],
+            'Glucose_Value': [100.0, 100.0, 110.0],
+            'Trend': ['Steady', 'Steady', 'Steady']
+        })
+
+        # Set meeting_count to 4 to trigger ELEVATED LOAD (1.15) which is <= 1.2
+        with patch('logic.apply_context_modifiers', return_value=df):
+            processed_df, status, color, message = calc_glycemic_risk(
+                df, context="Normal", meeting_count=4
+            )
+
+        self.assertNotEqual(status, "🟡 LOAD ALERT")
+        self.assertIn("System nominal", message)
+
+    @patch('logic.is_weekend_window')
+    @patch('logic.get_whoop_risk_modifier')
+    def test_calc_glycemic_risk_schedule_load_high_triggers_alert(self, mock_whoop, mock_weekend):
+        # mock weekend to False and whoop modifier to 1.0
+        mock_weekend.return_value = False
+        mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
+
+        # Nominal glucose and steady trend to avoid other alerts
+        df = pd.DataFrame({
+            'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00')],
+            'Glucose_Value': [120.0, 120.0],
+            'Trend': ['Steady', 'Steady']
+        })
+
+        # Test with HIGH LOAD (meeting_count = 7)
+        with patch('logic.apply_context_modifiers', return_value=df):
+            processed_df, status, color, message = calc_glycemic_risk(
+                df, context="Normal", meeting_count=7
+            )
+
+        self.assertEqual(status, "🟡 LOAD ALERT")
+        self.assertEqual(color, "#EED49F")
+        self.assertIn("🔴 HIGH LOAD", message)
+
+    @patch('logic.is_weekend_window')
+    @patch('logic.get_whoop_risk_modifier')
+    def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(self, mock_whoop, mock_weekend):
+        # mock weekend to True so schedule load alert is suppressed
+        mock_weekend.return_value = True
+        mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
+
+        df = pd.DataFrame({
+            'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00')],
+            'Glucose_Value': [120.0, 120.0],
+            'Trend': ['Steady', 'Steady']
+        })
+
+        with patch('logic.apply_context_modifiers', return_value=df):
+            processed_df, status, color, message = calc_glycemic_risk(
+                df, context="Normal", meeting_count=7
+            )
+
+        # Alert should not be triggered because weekend is active
+        self.assertNotEqual(status, "🟡 LOAD ALERT")
+        self.assertIn("🌴 WEEKEND MODE ACTIVE", message)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -3,9 +3,12 @@ import time
 import requests
 import streamlit as st
 import secrets
-import logging
+import logging    
 import os
 from urllib.parse import urlencode
+
+
+logger = logging.getLogger(__name__)
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -20,17 +23,16 @@ REDIRECT_URI = st.secrets["WHOOP_REDIRECT_URI"]
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
-def get_authorization_url():
-    """Generates the Whoop login URL with a dynamic state for CSRF protection."""
-    if "oauth_state" not in st.session_state:
-        st.session_state.oauth_state = secrets.token_urlsafe(16)
-        
+def get_authorization_url(state: str):
+    """Generates the Whoop login URL for the OAuth2 handshake."""
+    state_token = secrets.token_urlsafe(16)
+    st.session_state.oauth_state = state_token
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": "offline read:recovery read:cycles read:sleep read:workout",
-        "state": st.session_state.oauth_state
+        "state": state_token
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
@@ -47,7 +49,7 @@ def get_access_token(auth_code):
         response = requests.post(TOKEN_URL, data=data, timeout=10)
         return response.json()
     except Exception as e:
-        logger.error(f"Token exchange failed: {e}")
+        st.error("Whoop Auth Error. Please try again later.")
         return None
 
 @st.cache_data(ttl=300)
