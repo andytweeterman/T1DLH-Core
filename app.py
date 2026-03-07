@@ -81,30 +81,39 @@ if "code" in st.query_params and not st.session_state.whoop_token:
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=60)
+def load_all_data(whoop_token, current_context):
+    """Fetches and correlates all data streams."""
+    whoop_metrics = None
+    if whoop_token:
+        whoop_metrics = whoop.fetch_whoop_recovery(whoop_token)
+
+    meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
+
+    raw_data = logic.fetch_health_data()
+
+    full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+        raw_data,
+        current_context,
+        whoop_data=whoop_metrics,
+        meeting_count=meeting_count,
+        speaker_mode=speaker_mode
+    )
+
+    return full_data, status, color_hex, reason, whoop_metrics, meeting_count, speaker_mode
+
 try:
     with st.spinner("Syncing Health & Schedule Data..."):
-        # A. Fetch Whoop Data
-        whoop_metrics = None
-        if st.session_state.whoop_token:
-            whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token)
-        
-        # B. Fetch Schedule Context 
-        meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
-        
-        # C. Fetch Dexcom/Health Data
-        raw_data = logic.fetch_health_data()
-        
-        # D. Calculate Risk 
-        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
-            raw_data, 
-            st.session_state.current_context,
-            whoop_data=whoop_metrics,
-            meeting_count=meeting_count,
-            speaker_mode=speaker_mode
+        full_data, status, color_hex, reason, whoop_metrics, meeting_count, speaker_mode = load_all_data(
+            st.session_state.whoop_token,
+            st.session_state.current_context
         )
         latest = full_data.iloc[-1]
 except Exception as e:
     st.error(f"Data loading failed: {e}")
+    # Initialize variables so the rest of the script doesn't crash from NameError
+    status, color_hex, reason = "ERROR", "#ED8796", str(e)
+    meeting_count, speaker_mode = 0, False
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
