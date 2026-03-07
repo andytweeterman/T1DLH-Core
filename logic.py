@@ -1,12 +1,10 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import streamlit as st
 
 # -----------------------------------------------------------------------------
 # 1. BIOMETRIC SIMULATOR
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=300) # Cache simulation for 5 minutes
 def fetch_health_data():
     """Simulates 24 hours of Dexcom/Whoop data."""
     end_time = datetime.now()
@@ -27,6 +25,7 @@ def fetch_health_data():
 
 def apply_context_modifiers(df, context):
     """Injects real-life chaos into the base telemetry."""
+    # Do not set np.random.seed here to maintain non-deterministic behavior for tests
     noise = np.random.normal(0, 3, len(df)) 
     
     if context == "Stressed":
@@ -45,8 +44,8 @@ def apply_context_modifiers(df, context):
     elif context == "Travel":
         spikes = np.zeros(len(df))
         indices = np.random.choice(range(len(df)), size=3, replace=False)
+        x = np.arange(len(df))
         for idx in indices:
-            x = np.arange(len(df))
             spikes += 60 * np.exp(-0.5 * ((x - idx) / 6)**2) 
         df['Glucose_Value'] = df['Glucose_Value'] + spikes + noise
     else:
@@ -61,12 +60,14 @@ def apply_context_modifiers(df, context):
 # -----------------------------------------------------------------------------
 # 2. RISK ANALYSIS HELPERS
 # -----------------------------------------------------------------------------
-def _calculate_schedule_load(meeting_count):
-    """Translates calendar density into an ERM risk multiplier."""
+def calculate_schedule_load(meeting_count):
+    """
+    Translates calendar density into an ERM risk multiplier.
+    """
     if meeting_count >= 7:
-        return 1.3, "🔴 HIGH LOAD: Schedule density is critical."
+        return 1.3, "🔴 HIGH LOAD: Schedule density is critical. Expect cortisol-driven resistance."
     elif meeting_count >= 4:
-        return 1.15, "🟡 ELEVATED LOAD: Moderate schedule density."
+        return 1.15, "🟡 ELEVATED LOAD: Moderate schedule density. Monitor baseline."
     return 1.0, "🟢 LIGHT LOAD: Schedule is clear."
 
 def get_whoop_risk_modifier(whoop_metrics):
@@ -132,7 +133,6 @@ def generate_travel_advisory(offset_hours=6):
 # -----------------------------------------------------------------------------
 # 3. THE UNIFIED ERM ENGINE
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=60) # Cache risk state for 1 minute
 def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
     """Correlates all data streams to provide a unified Risk Status."""
     df = apply_context_modifiers(df, context)
