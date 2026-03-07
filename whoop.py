@@ -1,6 +1,7 @@
 import json
 import time
 import requests
+import secrets
 import streamlit as st
 import secrets
 from urllib.parse import urlencode
@@ -20,14 +21,14 @@ TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
 def get_authorization_url():
     """Generates the Whoop login URL for the OAuth2 handshake."""
-    oauth_state = secrets.token_urlsafe()
-    st.session_state.oauth_state = oauth_state
+    state_token = secrets.token_urlsafe(16)
+    st.session_state.oauth_state = state_token
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": "offline read:recovery read:cycles read:sleep read:workout",
-        "state": oauth_state
+        "state": state_token
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
