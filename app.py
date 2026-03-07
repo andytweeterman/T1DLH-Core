@@ -262,7 +262,7 @@ if audio_bytes:
                     "whoop_day_strain": w_strain
                 }
                 
-                prompt = f"""
+                system_instruction = f"""
                 You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                 Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                 
@@ -274,13 +274,19 @@ if audio_bytes:
                 - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                 """
                 
+                secure_model = genai.GenerativeModel(
+                    active_model_name,
+                    system_instruction=system_instruction,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+
                 # Bundle the text prompt and raw audio bytes natively into Gemini
                 audio_part = {
                     "mime_type": "audio/wav",
                     "data": audio_bytes
                 }
                 
-                response = model_json.generate_content([prompt, audio_part])
+                response = secure_model.generate_content([audio_part])
                 clean_text = response.text.strip()
                 
                 markdown_fence = chr(96) * 3
