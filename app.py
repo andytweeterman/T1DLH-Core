@@ -81,32 +81,34 @@ if "code" in st.query_params and not st.session_state.whoop_token:
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=60)
-def load_all_data(whoop_token, current_context):
-    """Fetches and correlates all data streams."""
-    whoop_metrics = None
-    if whoop_token:
-        whoop_metrics = whoop.fetch_whoop_recovery(whoop_token)
+@st.cache_data(ttl=300) # Cache simulation for 5 minutes
+def get_cached_health_data():
+    return logic.fetch_health_data()
 
-    meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
-
-    raw_data = logic.fetch_health_data()
-
-    full_data, status, color_hex, reason = logic.calc_glycemic_risk(
-        raw_data,
-        current_context,
-        whoop_data=whoop_metrics,
-        meeting_count=meeting_count,
-        speaker_mode=speaker_mode
-    )
-
-    return full_data, status, color_hex, reason, whoop_metrics, meeting_count, speaker_mode
+@st.cache_data(ttl=60) # Cache risk state for 1 minute
+def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
+    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode)
 
 try:
     with st.spinner("Syncing Health & Schedule Data..."):
-        full_data, status, color_hex, reason, whoop_metrics, meeting_count, speaker_mode = load_all_data(
-            st.session_state.whoop_token,
-            st.session_state.current_context
+        # A. Fetch Whoop Data
+        whoop_metrics = None
+        if st.session_state.whoop_token:
+            whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token)
+        
+        # B. Fetch Schedule Context 
+        meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
+        
+        # C. Fetch Dexcom/Health Data
+        raw_data = get_cached_health_data()
+        
+        # D. Calculate Risk 
+        full_data, status, color_hex, reason = get_cached_glycemic_risk(
+            raw_data, 
+            st.session_state.current_context,
+            whoop_data=whoop_metrics,
+            meeting_count=meeting_count,
+            speaker_mode=speaker_mode
         )
         latest = full_data.iloc[-1]
 except Exception as e:
