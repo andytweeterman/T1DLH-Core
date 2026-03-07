@@ -43,8 +43,8 @@ def apply_context_modifiers(df, context):
     elif context == "Travel":
         spikes = np.zeros(len(df))
         indices = np.random.choice(range(len(df)), size=3, replace=False)
+        x = np.arange(len(df))
         for idx in indices:
-            x = np.arange(len(df))
             spikes += 60 * np.exp(-0.5 * ((x - idx) / 6)**2) 
         df['Glucose_Value'] = df['Glucose_Value'] + spikes + noise
     else:
