@@ -62,8 +62,8 @@ def test_get_mock_cgm_trends():
 
 def test_get_mock_cgm_deterministic():
     # Because there's a lot of randomness, let's just make sure multiple calls return different data
-    df1 = fetch_health_data()
-    df2 = fetch_health_data()
+    fetch_health_data.clear() ; df1 = fetch_health_data()
+    fetch_health_data.clear() ; df2 = fetch_health_data()
 
     # It's extremely unlikely these would be exactly the same
     assert not df1['Glucose_Value'].equals(df2['Glucose_Value'])

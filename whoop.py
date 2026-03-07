@@ -41,8 +41,8 @@ def get_access_token(auth_code):
         # Timeout added to prevent hanging during network lag
         response = requests.post(TOKEN_URL, data=data, timeout=10)
         return response.json()
-    except Exception as e:
-        st.error(f"Whoop Auth Error: {e}")
+    except Exception:
+        st.error("Whoop Auth Error. Please try again.")
         return None
 
 @st.cache_data(ttl=300) # Performance: Cache biometric data for 5 minutes
