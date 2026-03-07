@@ -62,8 +62,7 @@ def test_get_mock_cgm_trends():
 
 def test_get_mock_cgm_deterministic():
     # Because there's a lot of randomness, let's just make sure multiple calls return different data
-    if hasattr(fetch_health_data, 'clear'):
-        fetch_health_data.clear()
+    fetch_health_data.clear()
     df1 = fetch_health_data()
     fetch_health_data.clear()
     df2 = fetch_health_data()

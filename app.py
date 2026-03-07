@@ -46,7 +46,7 @@ try:
         generation_config={"response_mime_type": "application/json"}
     )
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
+    st.error("⚠️ API Critical Failure. Please check system logs.")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -66,17 +66,24 @@ if not st.session_state.whoop_token:
 # 3. If the vault is empty, check if we are returning from a manual login
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
-        auth_code = st.query_params["code"]
-        token_data = whoop.get_access_token(auth_code)
-        
-        # Safety check: ensure Whoop actually returned a token
-        if token_data and "access_token" in token_data:
-            st.session_state.whoop_token = token_data.get("access_token")
-            whoop.save_tokens(token_data) # Save it to the vault!
-            st.query_params.clear() # Scrub the URL clean
-            st.rerun()
+        query_state = st.query_params.get("state")
+        session_state = st.session_state.get("oauth_state")
+
+        if query_state and session_state and query_state == session_state:
+            auth_code = st.query_params["code"]
+            token_data = whoop.get_access_token(auth_code)
+
+            # Safety check: ensure Whoop actually returned a token
+            if token_data and "access_token" in token_data:
+                st.session_state.whoop_token = token_data.get("access_token")
+                whoop.save_tokens(token_data) # Save it to the vault!
+                st.query_params.clear() # Scrub the URL clean
+                st.rerun()
+            else:
+                st.error("Whoop Auth Failed. Please try again.")
         else:
-            st.error("Whoop Auth Failed. Please try again.")
+            st.error("Invalid or missing state parameter. Authentication failed.")
+            st.query_params.clear()
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
@@ -112,10 +119,7 @@ try:
         )
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"Data loading failed: {e}")
-    # Initialize variables so the rest of the script doesn't crash from NameError
-    status, color_hex, reason = "ERROR", "#ED8796", str(e)
-    meeting_count, speaker_mode = 0, False
+    st.error("Data loading failed. Please try again.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
@@ -258,11 +262,11 @@ if audio_bytes:
                     "whoop_day_strain": w_strain
                 }
                 
-                prompt = f"""
+                system_instruction = f"""
                 You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                 Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                 
-                The user just provided an audio brain dump. Listen to the audio and correlate their subjective state with their objective telemetry. 
+                The user will provide an audio brain dump. Listen to the audio and correlate their subjective state with their objective telemetry.
                 Return a valid JSON object with EXACTLY these keys:
                 - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                 - "summary": "A 3-word summary."
@@ -270,13 +274,19 @@ if audio_bytes:
                 - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                 """
                 
+                secure_model = genai.GenerativeModel(
+                    active_model_name,
+                    system_instruction=system_instruction,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+
                 # Bundle the text prompt and raw audio bytes natively into Gemini
                 audio_part = {
                     "mime_type": "audio/wav",
                     "data": audio_bytes
                 }
                 
-                response = model_json.generate_content([prompt, audio_part])
+                response = secure_model.generate_content([audio_part])
                 clean_text = response.text.strip()
                 
                 markdown_fence = chr(96) * 3
@@ -293,7 +303,7 @@ if audio_bytes:
                 st.session_state.active_view = "Assistant"
                 st.rerun()
             except Exception as e:
-                st.error(f"Voice Analysis failed: {e}")
+                st.error("Voice Analysis failed. Please try again.")
 
 st.divider()
 
@@ -349,7 +359,7 @@ if st.session_state.active_view == "Daily Briefing":
             is_weekend = logic.is_weekend_window()
             day_type = "Weekend / Recharge Day" if is_weekend else "Standard Workday"
 
-            prompt = f"""
+            system_instruction = f"""
             You are an executive performance coach. Write a daily briefing based on these metrics:
             - Day Type: {day_type}
             - Schedule Density: {meeting_count} meetings.
@@ -366,7 +376,13 @@ if st.session_state.active_view == "Daily Briefing":
             Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
             """
 
-            response = model_json.generate_content(prompt)
+            briefing_model = genai.GenerativeModel(
+                active_model_name,
+                generation_config={"response_mime_type": "application/json"},
+                system_instruction=system_instruction
+            )
+
+            response = briefing_model.generate_content("Generate the executive daily briefing now.")
             clean_text = response.text.strip()
             
             # Replaced the .startswith method with safe replacement to avoid parser cutoff
@@ -380,7 +396,7 @@ if st.session_state.active_view == "Daily Briefing":
             st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
 
         except Exception as e:
-            st.error(f"Failed to generate briefing. Please check API connection. System error: {e}")
+            st.error("Failed to generate briefing. Please check API connection.")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
@@ -505,7 +521,7 @@ elif st.session_state.active_view == "Assistant":
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
                 except Exception as e: 
-                    st.error(f"Correlation Analysis failed: {e}")
+                    st.error("Correlation Analysis failed. Please try again.")
                     
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
