@@ -46,7 +46,7 @@ try:
         generation_config={"response_mime_type": "application/json"}
     )
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
+    st.error("⚠️ API Critical Failure. Please check system logs.")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -66,21 +66,36 @@ if not st.session_state.whoop_token:
 # 3. If the vault is empty, check if we are returning from a manual login
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
-        auth_code = st.query_params["code"]
-        token_data = whoop.get_access_token(auth_code)
-        
-        # Safety check: ensure Whoop actually returned a token
-        if token_data and "access_token" in token_data:
-            st.session_state.whoop_token = token_data.get("access_token")
-            whoop.save_tokens(token_data) # Save it to the vault!
-            st.query_params.clear() # Scrub the URL clean
-            st.rerun()
+        query_state = st.query_params.get("state")
+        session_state = st.session_state.get("oauth_state")
+
+        if query_state and session_state and query_state == session_state:
+            auth_code = st.query_params["code"]
+            token_data = whoop.get_access_token(auth_code)
+
+            # Safety check: ensure Whoop actually returned a token
+            if token_data and "access_token" in token_data:
+                st.session_state.whoop_token = token_data.get("access_token")
+                whoop.save_tokens(token_data) # Save it to the vault!
+                st.query_params.clear() # Scrub the URL clean
+                st.rerun()
+            else:
+                st.error("Whoop Auth Failed. Please try again.")
         else:
-            st.error("Whoop Auth Failed. Please try again.")
+            st.error("Invalid or missing state parameter. Authentication failed.")
+            st.query_params.clear()
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=300) # Cache simulation for 5 minutes
+def get_cached_health_data():
+    return logic.fetch_health_data()
+
+@st.cache_data(ttl=60) # Cache risk state for 1 minute
+def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
+    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode)
+
 try:
     with st.spinner("Syncing Health & Schedule Data..."):
         # A. Fetch Whoop Data
@@ -92,10 +107,10 @@ try:
         meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
         
         # C. Fetch Dexcom/Health Data
-        raw_data = logic.fetch_health_data()
+        raw_data = get_cached_health_data()
         
         # D. Calculate Risk 
-        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+        full_data, status, color_hex, reason = get_cached_glycemic_risk(
             raw_data, 
             st.session_state.current_context,
             whoop_data=whoop_metrics,
@@ -104,7 +119,7 @@ try:
         )
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"Data loading failed: {e}")
+    st.error("Data loading failed. Please try again.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
@@ -259,10 +274,10 @@ if audio_bytes:
                 - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                 """
                 
-                voice_model = genai.GenerativeModel(
+                secure_model = genai.GenerativeModel(
                     active_model_name,
-                    generation_config={"response_mime_type": "application/json"},
-                    system_instruction=system_instruction
+                    system_instruction=system_instruction,
+                    generation_config={"response_mime_type": "application/json"}
                 )
 
                 # Bundle the text prompt and raw audio bytes natively into Gemini
@@ -271,7 +286,7 @@ if audio_bytes:
                     "data": audio_bytes
                 }
                 
-                response = voice_model.generate_content([audio_part])
+                response = secure_model.generate_content([audio_part])
                 clean_text = response.text.strip()
                 
                 markdown_fence = chr(96) * 3
@@ -288,7 +303,7 @@ if audio_bytes:
                 st.session_state.active_view = "Assistant"
                 st.rerun()
             except Exception as e:
-                st.error(f"Voice Analysis failed: {e}")
+                st.error("Voice Analysis failed. Please try again.")
 
 st.divider()
 
@@ -381,7 +396,7 @@ if st.session_state.active_view == "Daily Briefing":
             st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
 
         except Exception as e:
-            st.error(f"Failed to generate briefing. Please check API connection. System error: {e}")
+            st.error("Failed to generate briefing. Please check API connection.")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
@@ -480,7 +495,7 @@ elif st.session_state.active_view == "Assistant":
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                     Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                     
-                    The user will report their subjective state. Correlate their subjective report with their objective telemetry.
+                    Correlate their subjective report with their objective telemetry. 
                     Return a valid JSON object with EXACTLY these keys:
                     - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                     - "summary": "A 3-word summary."
@@ -506,7 +521,7 @@ elif st.session_state.active_view == "Assistant":
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
                 except Exception as e: 
-                    st.error(f"Correlation Analysis failed: {e}")
+                    st.error("Correlation Analysis failed. Please try again.")
                     
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
