@@ -1,4 +1,5 @@
 import html
+import secrets
 import streamlit as st
 import plotly.graph_objects as go
 import google.generativeai as genai
@@ -66,6 +67,13 @@ if not st.session_state.whoop_token:
 # 3. If the vault is empty, check if we are returning from a manual login
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
+        expected_state = st.context.cookies.get("whoop_oauth_state")
+        returned_state = st.query_params.get("state")
+
+        if not returned_state or returned_state != expected_state:
+            st.error("Security Error: Invalid or missing state parameter. Authentication aborted to prevent CSRF.")
+            st.stop()
+
         auth_code = st.query_params["code"]
         token_data = whoop.get_access_token(auth_code)
         
@@ -148,7 +156,16 @@ with st.container(border=True):
             
             # 1. Whoop Sync Logic inside the menu
             if not st.session_state.whoop_token:
-                auth_link = whoop.get_authorization_url()
+                # Generate a secure random state string
+                oauth_state = secrets.token_urlsafe(16)
+
+                # Inject JavaScript to store the state parameter in a client-side cookie
+                st.components.v1.html(
+                    f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>",
+                    height=0
+                )
+
+                auth_link = whoop.get_authorization_url(oauth_state)
                 st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
             else:
                 if st.button("✅ Whoop Synced", use_container_width=True):
