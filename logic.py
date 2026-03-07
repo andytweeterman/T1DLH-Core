@@ -140,11 +140,11 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
     latest_glucose = df['Glucose_Value'].iloc[-1]
     latest_trend = df['Trend'].iloc[-1]
     
-    # Process Secondary Streams
+# Process Secondary Streams
     whoop_modifier, whoop_status = 1.0, ""
     if whoop_data:
-        score = whoop_data.get('score', {}).get('recovery_score', 100)
-        whoop_modifier, whoop_status = get_whoop_risk_modifier(score)
+        # Fix: Pass the ENTIRE whoop_data dictionary, not just the integer score
+        whoop_modifier, whoop_status = get_whoop_risk_modifier(whoop_data)
     
     sched_modifier, sched_status = calculate_schedule_load(meeting_count)
     weekend_active = is_weekend_window()
