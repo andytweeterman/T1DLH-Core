@@ -30,14 +30,16 @@ styles.apply_theme()
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     try:
+        # First, try the cutting-edge preview
         target_model = 'gemini-3-flash-preview'
         test_model = genai.GenerativeModel(target_model)
         test_model.generate_content("Ping") 
         active_model_name = target_model
         model_status = "✨ GEMINI 3.0 FLASH (PREVIEW) ONLINE"
     except Exception:
-        active_model_name = 'gemini-1.5-flash'
-        model_status = "⚠️ LEGACY FALLBACK: GEMINI 1.5 FLASH"
+        # FIX: Use the rolling alias instead of a hardcoded deprecated version
+        active_model_name = 'gemini-2.0-flash'
+        model_status = "⚡ PRODUCTION: GEMINI 2.0 FLASH ONLINE"
 
     model_json = genai.GenerativeModel(
         active_model_name,
