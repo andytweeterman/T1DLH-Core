@@ -23,21 +23,21 @@ st.set_page_config(
 styles.apply_theme()
 
 # -----------------------------------------------------------------------------
-# 2. INITIALIZE GEMINI CLIENT (2026 PROTOCOL)
+# 2. INITIALIZE GEMINI CLIENT
 # -----------------------------------------------------------------------------
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     
-    # Strictly bind to the only supported model in this preview environment
-    active_model_name = 'gemini-2.5-flash-preview-09-2025'
-    model_status = "✨ GEMINI 2.5 FLASH (PREVIEW) ONLINE"
+    # Use the standard public model name
+    active_model_name = 'gemini-2.5-flash' 
+    model_status = "✨ GEMINI 2.5 FLASH ONLINE"
 
     model_json = genai.GenerativeModel(
         active_model_name,
         generation_config={"response_mime_type": "application/json"}
     )
 except Exception as e:
-    st.error("⚠️ API Critical Failure. Please check system logs.")
+    st.error(f"⚠️ API Critical Failure. Details: {e}")
     st.stop()
 
 # -----------------------------------------------------------------------------
