@@ -84,25 +84,6 @@ if "code" in st.query_params and not st.session_state.whoop_token:
         else:
             st.sidebar.error("Whoop Auth Failed. Please try again.")
 
-query_params = st.query_params
-if "code" in query_params and not st.session_state.whoop_token:
-    with st.spinner("Finalizing Whoop Connection..."):
-        auth_code = query_params["code"]
-        token_data = whoop.get_access_token(auth_code)
-        st.session_state.whoop_token = token_data.get("access_token")
-        st.query_params.clear()
-        st.rerun()
-
-with st.sidebar:
-    st.divider()
-    if not st.session_state.whoop_token:
-        auth_link = whoop.get_authorization_url()
-        st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True, type="primary")
-    else:
-        st.success("✅ Whoop Connected")
-        if st.button("Refresh Biometrics"):
-            st.rerun()
-
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
@@ -147,7 +128,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    # Adjusted column weights to make room for the new Whoop button
     p_col1, p_col2, p_col3, p_col4, p_spacer = st.columns([1.5, 2.5, 3, 3, 1])
     
     with p_col1:
@@ -188,7 +168,7 @@ st.divider()
 # 6. NAVIGATION
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state:
-    st.session_state.active_view = "Daily Briefing" # Set new default
+    st.session_state.active_view = "Daily Briefing"
 
 c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
@@ -220,69 +200,88 @@ st.markdown("---")
 # --- VIEW: DAILY BRIEFING (BLUF) ---
 if st.session_state.active_view == "Daily Briefing":
     st.markdown("### 📋 Executive Daily Briefing")
-    
-    with st.spinner("Compiling tactical summary..."):
+    st.markdown("A tactical synthesis of your readiness, load, and biology.")
+
+    with st.spinner("Compiling Executive Briefing..."):
         try:
-            # FIX: Use the globally defined active_model_name instead of a hardcoded string
-            briefing_model = genai.GenerativeModel(active_model_name)
-            
-            # Gather the current context variables
-            current_glucose = int(latest['Glucose_Value']) if 'latest' in locals() else "Unknown"
-            trend = latest['Trend'] if 'latest' in locals() else "Unknown"
-            rec_score = whoop_metrics.get('score', {}).get('recovery_score', 'Unknown') if whoop_metrics else "Not Synced"
-            
-            # The Prompt
-            bluf_prompt = f"""
-            You are an executive health advisor. Provide a 3-bullet "Bottom Line Up Front" (BLUF) briefing for today.
-            Data:
-            - Meetings next 8h: {meeting_count}
-            - Whoop Recovery: {rec_score}%
-            - Current Glucose: {current_glucose} mg/dL (Trend: {trend})
-            - Context: {st.session_state.current_context}
-            
-            Rules: Keep it non-technical, highly actionable, and under 50 words total. Do not use medical jargon. Focus on cognitive load and energy management.
+            # Gather current context
+            latest = full_data.iloc[-1]
+            bg_val = int(latest['Glucose_Value'])
+            trend = latest['Trend']
+
+            # Extract deep Whoop metrics
+            rec_score, sleep_perf, strain = "Unknown", "Unknown", "Unknown"
+            if st.session_state.whoop_token and whoop_metrics:
+                rec_score = whoop_metrics.get('score', {}).get('recovery_score', "Unknown")
+                sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', "Unknown")
+                strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1)
+
+            # Determine the structural tone of the day
+            is_weekend = logic.is_weekend_window()
+            day_type = "Weekend / Recharge Day" if is_weekend else "Standard Workday"
+
+            prompt = f"""
+            You are an executive performance coach. Write a daily briefing based on these metrics:
+            - Day Type: {day_type}
+            - Schedule Density: {meeting_count} meetings.
+            - Whoop Metrics: {rec_score}% Recovery, {sleep_perf}% Sleep, {strain} Day Strain.
+            - Current Glucose: {bg_val} mg/dL, Trend: {trend}.
+            - Active Context: {st.session_state.current_context}
+
+            Return a valid JSON string containing EXACTLY this structure:
+            {{
+              "bullet_1": "Actionable insight combining schedule load and Whoop recovery/sleep.",
+              "bullet_2": "Actionable insight regarding metabolic readiness (glucose) and current strain.",
+              "bullet_3": "A single sentence recommending a specific action to take right now."
+            }}
+            Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
             """
+
+            # Generate using the pre-configured global model
+            response = model_json.generate_content(prompt)
+            clean_text = response.text.strip()
             
-            response = briefing_model.generate_content(bluf_prompt)
+            # Scrub Markdown fences if the API includes them
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:]
+            if clean_text.endswith("```"):
+                clean_text = clean_text[:-3]
             
-            # Display the result in a clean, elevated card
-            st.info(response.text)
-            
+            briefing_data = json.loads(clean_text.strip())
+
+            # Display the briefing cleanly
+            st.info(f"**1. Load & Resilience:** {html.escape(briefing_data.get('bullet_1', ''))}")
+            st.warning(f"**2. Metabolic State:** {html.escape(briefing_data.get('bullet_2', ''))}")
+            st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
+
         except Exception as e:
-            st.error(f"Failed to generate briefing: {e}. Please check API connection.")
+            st.error(f"Failed to generate briefing. Please check API connection. System error: {e}")
+            logger.error(f"Briefing generation error: {e}")
 
 # --- VIEW A: WELLNESS ---
-if st.session_state.active_view == "Wellness":
+elif st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     
-    # ROW 1: Metabolic Telemetry (Dexcom Only)
     st.markdown("#### 🧬 Metabolic Baseline")
     
-    # Changed from 3 columns to 2 to scrub the IOB placeholder
     cols_dex = st.columns(2)
     cols_dex[0].metric("Blood Sugar (mg/dL)", int(latest['Glucose_Value']), int(latest['Glucose_Value'] - prev['Glucose_Value']))
     cols_dex[1].metric("Trend", latest['Trend'])
-    # REMOVED: cols_dex[2].metric("Active Insulin", "1.5 U", "-0.2 U")
 
-    # ROW 2: Systemic Resilience (Whoop)
     if st.session_state.whoop_token and whoop_metrics:
         st.markdown("#### ⚡ Systemic Resilience")
         
-        # Expanding to 5 columns for the full telemetry suite
         cols_whoop = st.columns(5)
         
-        # Safely extract all metrics
         recovery_val = whoop_metrics.get('score', {}).get('recovery_score', 0)
         hrv_val = int(whoop_metrics.get('score', {}).get('hrv_rmssd_milli_seconds', 0))
         rhr_val = int(whoop_metrics.get('score', {}).get('resting_heart_rate_beats_per_minute', 0))
         strain_val = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1)
         sleep_val = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0)
         
-        # Color coding logic for quick ERM scanning
         rec_color = "normal" if recovery_val > 66 else "inverse" if recovery_val < 34 else "off"
         sleep_color = "normal" if sleep_val > 85 else "inverse" if sleep_val < 70 else "off"
         
-        # Populate the metrics
         cols_whoop[0].metric("Recovery", f"{recovery_val}%", delta=None, delta_color=rec_color)
         cols_whoop[1].metric("Sleep Perf", f"{sleep_val}%", delta=None, delta_color=sleep_color)
         cols_whoop[2].metric("Day Strain", f"{strain_val}")
@@ -291,7 +290,6 @@ if st.session_state.active_view == "Wellness":
     else:
         st.info("🔗 Click the Whoop Synced button in the header above to refresh your real-time Resilience metrics.")
     
-    # Universal Radio Toggle instead of segmented_control
     time_window = st.radio(
         "Time Range", 
         options=["3h", "6h", "12h", "24h"], 
@@ -327,16 +325,12 @@ elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
     card_css = "background-color: var(--card-bg); padding: 20px; border-radius: 20px; border: 1px solid rgba(128, 128, 128, 0.1); box-shadow: var(--card-shadow); text-align: center;"
     
-    # ERM-style status strings
-    # Adjusted to recognize Travel as an active advisory state, not an error
     t_status = '🟢 SAFE'
     if st.session_state.current_context == 'Travel':
         t_status = '✈️ SHIFTING'
         
     m_status = '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'
     
-    # MEETING DENSITY LOGIC (The new "Jules" Metric)
-    # We grab 'meeting_count' which was defined in Section 4 (Data Loading)
     density_label = "🟢 LIGHT"
     if meeting_count >= 7:
         density_label = "🔴 CRITICAL"
