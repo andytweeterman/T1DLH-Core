@@ -66,17 +66,24 @@ if not st.session_state.whoop_token:
 # 3. If the vault is empty, check if we are returning from a manual login
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
-        auth_code = st.query_params["code"]
-        token_data = whoop.get_access_token(auth_code)
-        
-        # Safety check: ensure Whoop actually returned a token
-        if token_data and "access_token" in token_data:
-            st.session_state.whoop_token = token_data.get("access_token")
-            whoop.save_tokens(token_data) # Save it to the vault!
-            st.query_params.clear() # Scrub the URL clean
-            st.rerun()
+        query_state = st.query_params.get("state")
+        session_state = st.session_state.get("oauth_state")
+
+        if query_state and session_state and query_state == session_state:
+            auth_code = st.query_params["code"]
+            token_data = whoop.get_access_token(auth_code)
+
+            # Safety check: ensure Whoop actually returned a token
+            if token_data and "access_token" in token_data:
+                st.session_state.whoop_token = token_data.get("access_token")
+                whoop.save_tokens(token_data) # Save it to the vault!
+                st.query_params.clear() # Scrub the URL clean
+                st.rerun()
+            else:
+                st.error("Whoop Auth Failed. Please try again.")
         else:
-            st.error("Whoop Auth Failed. Please try again.")
+            st.error("Invalid or missing state parameter. Authentication failed.")
+            st.query_params.clear()
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
