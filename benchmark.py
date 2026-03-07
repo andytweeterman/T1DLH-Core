@@ -1,21 +1,16 @@
 import timeit
-import numpy as np
 import pandas as pd
-from logic import apply_context_modifiers
+import numpy as np
+from logic import apply_context_modifiers, fetch_health_data
 
-# Create a sample DataFrame
-np.random.seed(42)
-df = pd.DataFrame({
-    'Glucose_Value': np.random.normal(130, 10, 1000000), # 1 Million rows
-    'Trend': ['Steady'] * 1000000
-})
+# Create a sample dataframe
+df = fetch_health_data()
 
+# Measure the execution time of apply_context_modifiers(df, "Travel")
 def run_benchmark():
-    # Make a copy so we don't modify the original during benchmark iterations (though it shouldn't matter for speed here)
-    apply_context_modifiers(df.copy(), "Travel")
+    apply_context_modifiers(df, "Travel")
 
 if __name__ == "__main__":
-    # Run benchmark
-    num_runs = 20
-    time_taken = timeit.timeit(run_benchmark, number=num_runs)
-    print(f"Time taken for {num_runs} runs: {time_taken:.4f} seconds")
+    n = 10000
+    time_taken = timeit.timeit(run_benchmark, number=n)
+    print(f"Time taken for {n} iterations: {time_taken:.4f} seconds")
