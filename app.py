@@ -104,7 +104,8 @@ try:
         )
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"Data loading failed: {e}")
+    logger.error(f"Data loading failed: {e}")
+    st.error("Data loading failed. Please try again later.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
