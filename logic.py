@@ -1,12 +1,10 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import streamlit as st
 
 # -----------------------------------------------------------------------------
 # 1. BIOMETRIC SIMULATOR
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=300) # Cache simulation for 5 minutes
 def fetch_health_data():
     """Simulates 24 hours of Dexcom/Whoop data."""
     end_time = datetime.now()
@@ -132,7 +130,6 @@ def generate_travel_advisory(offset_hours=6):
 # -----------------------------------------------------------------------------
 # 3. THE UNIFIED ERM ENGINE
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=60) # Cache risk state for 1 minute
 def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
     """Correlates all data streams to provide a unified Risk Status."""
     df = apply_context_modifiers(df, context)

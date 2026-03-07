@@ -81,6 +81,14 @@ if "code" in st.query_params and not st.session_state.whoop_token:
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=300)
+def get_cached_health_data():
+    return logic.fetch_health_data()
+
+@st.cache_data(ttl=60)
+def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
+    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode)
+
 try:
     with st.spinner("Syncing Health & Schedule Data..."):
         # A. Fetch Whoop Data
@@ -92,10 +100,10 @@ try:
         meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
         
         # C. Fetch Dexcom/Health Data
-        raw_data = logic.fetch_health_data()
+        raw_data = get_cached_health_data()
         
         # D. Calculate Risk 
-        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+        full_data, status, color_hex, reason = get_cached_glycemic_risk(
             raw_data, 
             st.session_state.current_context,
             whoop_data=whoop_metrics,
