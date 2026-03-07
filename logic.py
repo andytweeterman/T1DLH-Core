@@ -6,6 +6,7 @@ import streamlit as st
 # -----------------------------------------------------------------------------
 # 1. BIOMETRIC SIMULATOR
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=300) # Cache simulation for 5 minutes
 def fetch_health_data():
     """Simulates 24 hours of Dexcom/Whoop data."""
     end_time = datetime.now()
@@ -73,10 +74,14 @@ def get_whoop_risk_modifier(whoop_metrics):
     Translates Whoop Recovery, Strain, and Sleep into physiological risk vectors.
     Returns (multiplier, status_string)
     """
-    # Extract the deep metrics safely
-    recovery = whoop_metrics.get('score', {}).get('recovery_score', 100)
-    strain = whoop_metrics.get('score', {}).get('day_strain', 0.0)
-    sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 100)
+    if not whoop_metrics:
+        return 1.0, "No Sync"
+
+    # Extract the deep metrics safely from the V2 dictionary
+    score_obj = whoop_metrics.get('score', {})
+    recovery = score_obj.get('recovery_score', 100)
+    strain = score_obj.get('day_strain', 0.0)
+    sleep_perf = score_obj.get('sleep_performance_percentage', 100)
 
     multiplier = 1.0
     status_tags = []
@@ -92,17 +97,14 @@ def get_whoop_risk_modifier(whoop_metrics):
     # 2. Sleep Performance (Insulin Resistance Vector)
     if sleep_perf < 70:
         multiplier += 0.2
-        status_tags.append("💤 SLEEP DEBT (High Resistance)")
+        status_tags.append("💤 SLEEP DEBT")
 
     # 3. Day Strain (Insulin Sensitivity Vector)
-    # High physical exertion makes you hyper-sensitive to insulin later
     if strain > 14.0:
         multiplier -= 0.25 
-        status_tags.append("⚡ HIGH STRAIN (Watch for Lows)")
+        status_tags.append("⚡ HIGH STRAIN")
 
-    # Combine tags for the UI
     final_status = " | ".join(status_tags) if status_tags else "🟢 FULLY CHARGED"
-    
     return multiplier, final_status
 
 def is_weekend_window():
@@ -111,45 +113,38 @@ def is_weekend_window():
     weekday = now.weekday() # 4=Fri, 5=Sat, 6=Sun, 0=Mon
     hour = now.hour
     
-    if weekday == 4 and hour >= 17: return True # Friday after 5PM
-    if weekday in [5, 6]: return True           # All day Sat/Sun
-    if weekday == 0 and hour < 8: return True   # Monday before 8AM
+    if weekday == 4 and hour >= 17: return True 
+    if weekday in [5, 6]: return True 
+    if weekday == 0 and hour < 8: return True 
     return False
 
 def generate_travel_advisory(offset_hours=6):
-    """
-    Generates a phased pump time-shift protocol to prevent basal stacking.
-    Defaults to a +6 hour shift.
-    """
+    """Generates phased pump protocol for time-zone transitions."""
     shift = offset_hours / 3
     return (
         f"✈️ TRAVEL PROTOCOL (+{offset_hours}h Shift): "
         f"1️⃣ Today: Shift pump +{int(shift)}h. "
         f"2️⃣ Tomorrow: Shift +{int(shift)}h. "
-        f"3️⃣ Day 3: Final +{int(shift)}h shift to local time. "
-        "🛡️ Low gates raised to 100 mg/dL for walking."
+        f"3️⃣ Day 3: Final +{int(shift)}h. "
+        "🛡️ Low gates raised to 100 mg/dL."
     )
+
 # -----------------------------------------------------------------------------
 # 3. THE UNIFIED ERM ENGINE
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=60) # Cache risk state for 1 minute
 def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
     """Correlates all data streams to provide a unified Risk Status."""
-    # Apply latest user-selected context
     df = apply_context_modifiers(df, context)
     
     latest_glucose = df['Glucose_Value'].iloc[-1]
     latest_trend = df['Trend'].iloc[-1]
     
-# Process Secondary Streams
-    whoop_modifier, whoop_status = 1.0, ""
-    if whoop_data:
-        # Fix: Pass the ENTIRE whoop_data dictionary, not just the integer score
-        whoop_modifier, whoop_status = get_whoop_risk_modifier(whoop_data)
-    
+    whoop_modifier, whoop_status = get_whoop_risk_modifier(whoop_data)
     sched_modifier, sched_status = calculate_schedule_load(meeting_count)
     weekend_active = is_weekend_window()
 
-    # A. Safety First: Thresholds & Jules Guardrails
+    # A. Safety Thresholds
     high_threshold = 150 if speaker_mode else 180
     
     if latest_glucose > high_threshold:
@@ -161,29 +156,22 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
     elif latest_glucose < 70:
         return df, "🔴 NEEDS ATTENTION", "#ED8796", "Blood sugar is low."
 
-    # B. Contextual Escalation (Biometric + Schedule Alignment)
+    # B. Contextual Escalation
     if whoop_modifier >= 1.5:
         return df, "🔴 CAUTION", "#ED8796", f"{whoop_status} High physiological strain."
         
-    # Ignore schedule density alerts if Weekend Mode is active
     if not weekend_active and sched_modifier > 1.2:
         return df, "🟡 LOAD ALERT", "#EED49F", f"{sched_status}"
 
-# C. Standard Contextual analysis
+    # C. Contextual analysis
     if context == "Travel":
         advisory = generate_travel_advisory(offset_hours=6)
-        
-        # 1. Jetlag Cortisol Check (Tightened High Threshold)
         if latest_glucose > 160:
-            return df, "🟡 JETLAG ALERT", "#EED49F", f"{advisory} | High glucose detected. Likely travel stress/cortisol."
-        
-        # 2. Touring/Walking Check (Raised Low Threshold to 100)
+            return df, "🟡 JETLAG ALERT", "#EED49F", f"{advisory} | High cortisol likely."
         elif latest_glucose < 100:
             if latest_trend == "Falling":
-                return df, "🔴 TOUR LOW", "#ED8796", f"{advisory} | Active drop during travel. Treat immediately."
-            return df, "🟡 CAUTION", "#EED49F", f"{advisory} | Glucose dipping. Grab a snack."
-            
-        # 3. Stable Travel State
+                return df, "🔴 TOUR LOW", "#ED8796", f"{advisory} | Active drop. Treat now."
+            return df, "🟡 CAUTION", "#EED49F", f"{advisory} | Glucose dipping."
         return df, "🟢 TRAVELING", "#A6DA95", advisory
 
     if context == "Project" and latest_glucose < 110:
@@ -194,16 +182,15 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
         return df, "🟡 CAUTION", "#EED49F", "Glucose dropping during activity."
         
     if context == "Stressed" and latest_glucose > 150:
-        return df, "🟡 ELEVATED", "#EED49F", "Stress affecting glycemic baseline."
+        return df, "🟡 ELEVATED", "#EED49F", "Stress affecting baseline."
         
     if context == "Sick":
         return df, "🟠 MONITORING", "#F5A97F", "Baseline instability due to illness."
 
-    # D. Recovery Debt
     if whoop_modifier > 1.0:
          return df, "🟡 MONITORING", "#EED49F", f"{whoop_status} Lowered resilience."
 
-    # E. Final Output with Weekend Indicator
+    # Final Output
     final_reason = f"{whoop_status} System nominal."
     if weekend_active:
         final_reason = f"🌴 WEEKEND MODE ACTIVE | {final_reason}"
