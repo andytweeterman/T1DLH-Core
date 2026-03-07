@@ -1,8 +1,11 @@
 import json
 import time
 import requests
+import secrets
 import streamlit as st
+import secrets
 from urllib.parse import urlencode
+import secrets
 
 # Path for the local token vault
 TOKEN_FILE = "whoop_tokens.json"
@@ -19,12 +22,14 @@ TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
 def get_authorization_url(state: str):
     """Generates the Whoop login URL for the OAuth2 handshake."""
+    state_token = secrets.token_urlsafe(16)
+    st.session_state.oauth_state = state_token
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": "offline read:recovery read:cycles read:sleep read:workout",
-        "state": state
+        "state": state_token
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
@@ -42,7 +47,7 @@ def get_access_token(auth_code):
         response = requests.post(TOKEN_URL, data=data, timeout=10)
         return response.json()
     except Exception as e:
-        st.error(f"Whoop Auth Error: {e}")
+        st.error("Whoop Auth Error. Please try again later.")
         return None
 
 @st.cache_data(ttl=300) # Performance: Cache biometric data for 5 minutes
