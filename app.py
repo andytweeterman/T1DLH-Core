@@ -85,7 +85,7 @@ if "code" in st.query_params and not st.session_state.whoop_token:
             st.rerun()
         else:
             st.sidebar.error("Whoop Auth Failed. Please try again.")
-            
+
 # 4. Render the UI
 with st.sidebar:
     st.divider()
@@ -189,7 +189,8 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    p_col1, p_col2, p_col3, p_col4, p_spacer = st.columns([1.5, 2.5, 3, 3, 1])
+    # Adjusted columns to fit the hamburger menu perfectly on the right edge
+    p_col1, p_col2, p_col3, p_col4 = st.columns([1.5, 2.5, 3, 1.5])
     
     with p_col1:
         st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; margin-top: 10px;'>Live Status</p>", unsafe_allow_html=True)
@@ -209,13 +210,60 @@ with st.container(border=True):
                 st.rerun()
                 
     with p_col4:
-        # Dynamic Whoop Pill right in the header
-        if not st.session_state.whoop_token:
-            auth_link = whoop.get_authorization_url()
-            st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
-        else:
-            if st.button("✅ Whoop Synced", use_container_width=True):
-                st.rerun() # Acts as a manual data refresh
+        # The new Hamburger Menu Popover
+        with st.popover("☰ MENU", use_container_width=True):
+            st.markdown("##### 🔌 Integrations")
+            
+            # 1. Whoop Sync Logic inside the menu
+            if not st.session_state.whoop_token:
+                auth_link = whoop.get_authorization_url()
+                st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
+            else:
+                if st.button("✅ Whoop Synced", use_container_width=True):
+                    st.rerun() # Acts as a manual data refresh
+            
+            st.divider()
+            
+            # 2. Clinical Export Logic inside the menu
+            st.markdown("##### 🖨️ Export")
+            try:
+                avg_glucose = int(full_data['Glucose_Value'].mean())
+                std_dev = int(full_data['Glucose_Value'].std())
+                
+                w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
+                w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
+                w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
+                
+                clinical_snapshot = {
+                    "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "active_context": st.session_state.current_context,
+                    "schedule_load": {
+                        "meetings_next_8h": meeting_count,
+                        "weekend_window_active": logic.is_weekend_window()
+                    },
+                    "metabolic_telemetry_24h": {
+                        "current_glucose_mgdl": int(latest['Glucose_Value']),
+                        "trend_velocity": latest['Trend'],
+                        "average_glucose_mgdl": avg_glucose,
+                        "standard_deviation": std_dev
+                    },
+                    "systemic_resilience": {
+                        "whoop_recovery_pct": w_rec,
+                        "whoop_sleep_perf_pct": w_sleep,
+                        "whoop_day_strain": w_strain
+                    }
+                }
+                json_export = json.dumps(clinical_snapshot, indent=4)
+                
+                st.download_button(
+                    label="📥 Download JSON",
+                    data=json_export,
+                    file_name=f"TLDH_Clinical_Snapshot_{datetime.now().strftime('%Y%m%d')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+            except Exception:
+                st.warning("Awaiting full data sync...")
     
     st.markdown(f"""
         <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); font-style: italic; border-left: 3px solid var(--accent-start); padding-left: 10px;">
