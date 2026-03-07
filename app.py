@@ -266,7 +266,7 @@ if audio_bytes:
                 You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                 Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                 
-                The user just provided an audio brain dump. Listen to the audio and correlate their subjective state with their objective telemetry. 
+                The user will provide an audio brain dump. Listen to the audio and correlate their subjective state with their objective telemetry.
                 Return a valid JSON object with EXACTLY these keys:
                 - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                 - "summary": "A 3-word summary."
@@ -359,7 +359,7 @@ if st.session_state.active_view == "Daily Briefing":
             is_weekend = logic.is_weekend_window()
             day_type = "Weekend / Recharge Day" if is_weekend else "Standard Workday"
 
-            prompt = f"""
+            system_instruction = f"""
             You are an executive performance coach. Write a daily briefing based on these metrics:
             - Day Type: {day_type}
             - Schedule Density: {meeting_count} meetings.
@@ -376,7 +376,13 @@ if st.session_state.active_view == "Daily Briefing":
             Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
             """
 
-            response = model_json.generate_content(prompt)
+            briefing_model = genai.GenerativeModel(
+                active_model_name,
+                generation_config={"response_mime_type": "application/json"},
+                system_instruction=system_instruction
+            )
+
+            response = briefing_model.generate_content("Generate the executive daily briefing now.")
             clean_text = response.text.strip()
             
             # Replaced the .startswith method with safe replacement to avoid parser cutoff
