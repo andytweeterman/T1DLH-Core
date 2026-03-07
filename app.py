@@ -247,7 +247,7 @@ if audio_bytes:
                     "whoop_day_strain": w_strain
                 }
                 
-                prompt = f"""
+                system_instruction = f"""
                 You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                 Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                 
@@ -259,13 +259,19 @@ if audio_bytes:
                 - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                 """
                 
+                local_model = genai.GenerativeModel(
+                    active_model_name,
+                    generation_config={"response_mime_type": "application/json"},
+                    system_instruction=system_instruction
+                )
+
                 # Bundle the text prompt and raw audio bytes natively into Gemini
                 audio_part = {
                     "mime_type": "audio/wav",
                     "data": audio_bytes
                 }
                 
-                response = model_json.generate_content([prompt, audio_part])
+                response = local_model.generate_content([audio_part])
                 clean_text = response.text.strip()
                 
                 markdown_fence = chr(96) * 3
@@ -338,7 +344,7 @@ if st.session_state.active_view == "Daily Briefing":
             is_weekend = logic.is_weekend_window()
             day_type = "Weekend / Recharge Day" if is_weekend else "Standard Workday"
 
-            prompt = f"""
+            system_instruction = f"""
             You are an executive performance coach. Write a daily briefing based on these metrics:
             - Day Type: {day_type}
             - Schedule Density: {meeting_count} meetings.
@@ -355,7 +361,13 @@ if st.session_state.active_view == "Daily Briefing":
             Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
             """
 
-            response = model_json.generate_content(prompt)
+            local_model = genai.GenerativeModel(
+                active_model_name,
+                generation_config={"response_mime_type": "application/json"},
+                system_instruction=system_instruction
+            )
+
+            response = local_model.generate_content("Generate daily briefing.")
             clean_text = response.text.strip()
             
             # Replaced the .startswith method with safe replacement to avoid parser cutoff
@@ -464,11 +476,9 @@ elif st.session_state.active_view == "Assistant":
                         "whoop_day_strain": w_strain
                     }
                     
-                    prompt = f"""
+                    system_instruction = f"""
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                     Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
-                    
-                    The user just reported the following subjective state: "{text_input}"
                     
                     Correlate their subjective report with their objective telemetry. 
                     Return a valid JSON object with EXACTLY these keys:
@@ -478,7 +488,13 @@ elif st.session_state.active_view == "Assistant":
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    response = model_json.generate_content(prompt)
+                    local_model = genai.GenerativeModel(
+                        active_model_name,
+                        generation_config={"response_mime_type": "application/json"},
+                        system_instruction=system_instruction
+                    )
+
+                    response = local_model.generate_content(f'The user just reported the following subjective state: "{text_input}"')
                     clean_text = response.text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
