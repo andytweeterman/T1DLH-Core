@@ -37,15 +37,46 @@ def get_access_token(auth_code):
     return response.json()
 
 def fetch_whoop_recovery(token):
-    """Pulls the latest recovery metrics (HRV, RHR, Score)."""
+    """Pulls and merges Recovery, Cycle (Strain), and Sleep into a single profile."""
     headers = {"Authorization": f"Bearer {token}"}
-    # Pulling the latest recovery entry
-    url = "https://api.prod.whoop.com/developer/v1/recovery"
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        data = response.json()
-        return data[0] if data else None
-    return None
+    
+    try:
+        # 1. Fetch Recovery
+        rec_res = requests.get("https://api.prod.whoop.com/developer/v1/recovery", headers=headers)
+        # 2. Fetch Cycle (Strain)
+        cycle_res = requests.get("https://api.prod.whoop.com/developer/v1/cycle", headers=headers)
+        # 3. Fetch Sleep
+        sleep_res = requests.get("https://api.prod.whoop.com/developer/v1/activity/sleep", headers=headers)
+
+        if rec_res.status_code == 200:
+            # Safely extract the 'records' arrays
+            rec_data = rec_res.json().get('records', [])
+            cycle_data = cycle_res.json().get('records', []) if cycle_res.status_code == 200 else []
+            sleep_data = sleep_res.json().get('records', []) if sleep_res.status_code == 200 else []
+
+            # Grab the most recent entry for each category
+            latest_rec = rec_data[0] if rec_data else {}
+            latest_cycle = cycle_data[0] if cycle_data else {}
+            latest_sleep = sleep_data[0] if sleep_data else {}
+
+            # Stitch them together into the unified ERM format
+            return {
+                "score": {
+                    "recovery_score": latest_rec.get('score', {}).get('recovery_score', 0),
+                    "hrv_rmssd_milli_seconds": latest_rec.get('score', {}).get('hrv_rmssd_milli', 0.0),
+                    "resting_heart_rate_beats_per_minute": latest_rec.get('score', {}).get('resting_heart_rate', 0),
+                    "day_strain": latest_cycle.get('score', {}).get('strain', 0.0),
+                    "sleep_performance_percentage": latest_sleep.get('score', {}).get('sleep_performance_percentage', 0)
+                }
+            }
+        else:
+            # If the token is rejected, surface the error so we aren't guessing
+            st.error(f"Whoop API Error: {rec_res.status_code}. You may need to reconnect.")
+            return None
+            
+    except Exception as e:
+        st.error(f"Whoop Connection Error: {e}")
+        return None
 
 def save_tokens(token_data):
     """Calculates expiration time and saves to a local JSON vault."""

@@ -251,7 +251,7 @@ if st.session_state.active_view == "Wellness":
         cols_whoop[3].metric("HRV (ms)", hrv_val)
         cols_whoop[4].metric("Resting HR", rhr_val, delta_color="inverse")
     else:
-        st.info("🔗 Connect Whoop in the sidebar to view real-time Resilience metrics.")
+        st.info("🔗 Click the Whoop Synced button in the header above to refresh your real-time Resilience metrics.")
     
     # Universal Radio Toggle instead of segmented_control
     time_window = st.radio(
