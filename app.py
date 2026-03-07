@@ -188,9 +188,13 @@ st.divider()
 # 6. NAVIGATION
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state:
-    st.session_state.active_view = "Wellness"
+    st.session_state.active_view = "Briefing"
 
-c1, c2, c3, c4 = st.columns(4)
+c0, c1, c2, c3, c4 = st.columns(5)
+with c0:
+    if st.button("Briefing", use_container_width=True, type="primary" if st.session_state.active_view == "Briefing" else "secondary"):
+        st.session_state.active_view = "Briefing"
+        st.rerun()
 with c1:
     if st.button("Wellness", use_container_width=True, type="primary" if st.session_state.active_view == "Wellness" else "secondary"):
         st.session_state.active_view = "Wellness"
@@ -213,8 +217,60 @@ st.markdown("---")
 # 7. RENDER VIEWS
 # -----------------------------------------------------------------------------
 
+# --- VIEW: BRIEFING (EXECUTIVE SUMMARY) ---
+if st.session_state.active_view == "Briefing":
+    st.markdown("### 📊 Executive Daily Briefing")
+    st.markdown("A high-level synthesis of your readiness, load, and biology.")
+
+    with st.spinner("Compiling Executive Briefing..."):
+        try:
+            # Gather current context for the prompt
+            latest = full_data.iloc[-1]
+            bg_val = int(latest['Glucose_Value'])
+            trend = latest['Trend']
+
+            rec_score = "Unknown"
+            if st.session_state.whoop_token and whoop_metrics:
+                rec_score = whoop_metrics.get('score', {}).get('recovery_score', "Unknown")
+
+            prompt = f"""
+            You are an executive performance coach. Write a daily briefing for a high-performer based on these metrics:
+            - Schedule Density: {meeting_count} meetings today.
+            - Sleep Recovery: {rec_score}% (Whoop metric)
+            - Current Glucose: {bg_val} mg/dL, Trend: {trend}.
+
+            Return a valid JSON string containing EXACTLY this structure:
+            {{
+              "bullet_1": "A short, actionable insight combining schedule and recovery.",
+              "bullet_2": "A short, actionable insight regarding metabolic readiness (glucose).",
+              "bullet_3": "A single sentence recommending a specific action to take right now based on the overall picture."
+            }}
+            Make the tone professional, pragmatic, and encouraging. Avoid overly clinical jargon. Do not use Markdown formatting in the values.
+            """
+
+            # Generate the summary
+            response = model_json.generate_content(prompt)
+            clean_text = response.text.strip()
+            # Handle potential markdown code blocks in the response
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:]
+            if clean_text.endswith("```"):
+                clean_text = clean_text[:-3]
+            clean_text = clean_text.strip()
+
+            briefing_data = json.loads(clean_text)
+
+            # Display the briefing cleanly
+            st.info(f"**1. Schedule & Resilience:** {html.escape(briefing_data.get('bullet_1', ''))}")
+            st.warning(f"**2. Metabolic State:** {html.escape(briefing_data.get('bullet_2', ''))}")
+            st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
+
+        except Exception as e:
+            st.error(f"Failed to generate briefing: {e}")
+            logger.error(f"Briefing generation error: {e}")
+
 # --- VIEW A: WELLNESS ---
-if st.session_state.active_view == "Wellness":
+elif st.session_state.active_view == "Wellness":
     prev = full_data.iloc[-2]
     
     # ROW 1: Metabolic Telemetry (Dexcom Only)
