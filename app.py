@@ -461,26 +461,58 @@ elif st.session_state.active_view == "Schedule":
 # --- VIEW C: ASSISTANT ---
 elif st.session_state.active_view == "Assistant":
     st.markdown("### 🧬 Smart Health Companion")
+    st.markdown("Ask a question or log how you are feeling. The AI will correlate your input with your live telemetry.")
+    
     if "journal_history" not in st.session_state: st.session_state.journal_history = []
+    
     with st.form("journal_form", clear_on_submit=True):
-        text_input = st.text_area("Life Download:", placeholder="How are you feeling?")
-        if st.form_submit_button("Analyze Load", type="primary") and text_input:
-            with st.spinner("Analyzing..."):
+        text_input = st.text_area("Life Download:", placeholder="E.g., 'Just finished rebuilding the deck doors. Legs feel heavy.'")
+        
+        if st.form_submit_button("Analyze Correlation", type="primary") and text_input:
+            with st.spinner("Correlating subjective report with objective telemetry..."):
                 try:
-                    prompt = f"Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction: {text_input}"
+                    # 1. Rebuild the live clinical snapshot safely
+                    avg_glucose = int(full_data['Glucose_Value'].mean())
+                    std_dev = int(full_data['Glucose_Value'].std())
+                    w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
+                    w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
+                    w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
+                    
+                    live_context = {
+                        "active_context": st.session_state.current_context,
+                        "meetings_next_8h": meeting_count,
+                        "is_weekend_window": logic.is_weekend_window(),
+                        "current_glucose": int(latest['Glucose_Value']),
+                        "glucose_trend": latest['Trend'],
+                        "glucose_volatility_std_dev": std_dev,
+                        "whoop_recovery": w_rec,
+                        "whoop_sleep": w_sleep,
+                        "whoop_day_strain": w_strain
+                    }
+                    
+                    # 2. Inject the data directly into the AI's brain
+                    prompt = f"""
+                    You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
+                    Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
+                    
+                    The user just reported the following subjective state: "{text_input}"
+                    
+                    Correlate their subjective report with their objective telemetry. 
+                    Return a valid JSON object with EXACTLY these keys:
+                    - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
+                    - "summary": "A 3-word summary."
+                    - "scores": {{"bio_strain": int 1-10, "cog_load": int 1-10}}
+                    - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
+                    """
+                    
+                    # 3. Generate the response
                     response = model_json.generate_content(prompt)
-                    clean_text = response.text.strip().replace("```json", "").replace("```", "")
-                    parsed = json.loads(clean_text)
-                    parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    st.session_state.journal_history.insert(0, parsed)
-                    st.rerun()
-                except Exception as e: st.error(f"Analysis failed: {e}")
-    if st.session_state.journal_history:
-        entry = st.session_state.journal_history[0]
-        st.success(f"**Insight:** {entry['reply']}")
-        sc = entry.get("scores", {"bio":0, "cog":0, "emo":0})
-        st.metric("🧬 Physical", f"{sc['bio']}/10")
-        st.info(f"**📉 Prediction:** {entry['impact_prediction']}")
+                    clean_text = response.text.strip()
+                    
+                    # Scrub Markdown fences if they exist
+                    if clean_text.startswith("
+http://googleusercontent.com/immersive_entry_chip/0
+http://googleusercontent.com/immersive_entry_chip/1
 
 # --- VIEW D: SLEEP IMPACT ---
 elif st.session_state.active_view == "Sleep":
