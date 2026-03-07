@@ -37,41 +37,44 @@ def get_access_token(auth_code):
     return response.json()
 
 def fetch_whoop_recovery(token):
-    """Pulls and merges Recovery, Cycle (Strain), and Sleep into a single profile."""
+    """Pulls and merges V2 Cycle (Recovery & Strain) and Sleep into a single profile."""
     headers = {"Authorization": f"Bearer {token}"}
     
     try:
-        # 1. Fetch Recovery
-        rec_res = requests.get("https://api.prod.whoop.com/developer/v1/recovery", headers=headers)
-        # 2. Fetch Cycle (Strain)
-        cycle_res = requests.get("https://api.prod.whoop.com/developer/v1/cycle", headers=headers)
-        # 3. Fetch Sleep
-        sleep_res = requests.get("https://api.prod.whoop.com/developer/v1/activity/sleep", headers=headers)
+        # 1. Hit the new V2 endpoints
+        cycle_res = requests.get("https://api.prod.whoop.com/developer/v2/cycle", headers=headers)
+        sleep_res = requests.get("https://api.prod.whoop.com/developer/v2/activity/sleep", headers=headers)
 
-        if rec_res.status_code == 200:
-            # Safely extract the 'records' arrays
-            rec_data = rec_res.json().get('records', [])
-            cycle_data = cycle_res.json().get('records', []) if cycle_res.status_code == 200 else []
+        if cycle_res.status_code == 200:
+            cycle_data = cycle_res.json().get('records', [])
             sleep_data = sleep_res.json().get('records', []) if sleep_res.status_code == 200 else []
 
-            # Grab the most recent entry for each category
-            latest_rec = rec_data[0] if rec_data else {}
             latest_cycle = cycle_data[0] if cycle_data else {}
             latest_sleep = sleep_data[0] if sleep_data else {}
 
-            # Stitch them together into the unified ERM format
+            # In V2, Recovery is nested inside the Cycle object. 
+            # We use robust .get() chains to catch the data regardless of exact nesting.
+            recovery_obj = latest_cycle.get('recovery', {}).get('score', {}) 
+            if not recovery_obj:
+                # Fallback if Whoop flattens the dictionary
+                recovery_obj = latest_cycle.get('score', {})
+
+            strain_obj = latest_cycle.get('score', {})
+            sleep_obj = latest_sleep.get('score', {})
+
+            # Map the V2 keys back to the exact format your app.py is expecting
             return {
                 "score": {
-                    "recovery_score": latest_rec.get('score', {}).get('recovery_score', 0),
-                    "hrv_rmssd_milli_seconds": latest_rec.get('score', {}).get('hrv_rmssd_milli', 0.0),
-                    "resting_heart_rate_beats_per_minute": latest_rec.get('score', {}).get('resting_heart_rate', 0),
-                    "day_strain": latest_cycle.get('score', {}).get('strain', 0.0),
-                    "sleep_performance_percentage": latest_sleep.get('score', {}).get('sleep_performance_percentage', 0)
+                    "recovery_score": recovery_obj.get('recovery_score', 0),
+                    # V2 drops the "_seconds" and "_beats_per_minute" suffixes, so we map them here
+                    "hrv_rmssd_milli_seconds": recovery_obj.get('hrv_rmssd_milli', 0.0),
+                    "resting_heart_rate_beats_per_minute": recovery_obj.get('resting_heart_rate', 0),
+                    "day_strain": strain_obj.get('strain', 0.0),
+                    "sleep_performance_percentage": sleep_obj.get('sleep_performance_percentage', 0)
                 }
             }
         else:
-            # If the token is rejected, surface the error so we aren't guessing
-            st.error(f"Whoop API Error: {rec_res.status_code}. You may need to reconnect.")
+            st.error(f"Whoop API Error: {cycle_res.status_code}. Whoop may be down or tokens expired.")
             return None
             
     except Exception as e:
