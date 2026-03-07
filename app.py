@@ -490,7 +490,10 @@ elif st.session_state.active_view == "Assistant":
                         system_instruction=system_instruction
                     )
 
-                    response = assistant_model.generate_content(text_input)
+                    sanitized_input = text_input.replace('"', '\\"').replace('\n', ' ')
+                    prompt = f"Analyze this life download and return JSON with reply, summary, tags, scores (bio, cog, emo), and impact_prediction: {sanitized_input}"
+
+                    response = assistant_model.generate_content(prompt)
                     clean_text = response.text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
