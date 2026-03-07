@@ -1,5 +1,4 @@
 import pytest
-import unittest
 from unittest.mock import patch
 import pandas as pd
 import numpy as np
@@ -107,107 +106,103 @@ def test_calc_glycemic_risk_no_whoop():
         pytest.fail(f"Risk engine crashed without Whoop data: {e}")
 
 # =====================================================================
-# UNITTEST CLASS: SCHEDULE LOAD & INTEGRATION
+# SCHEDULE LOAD & INTEGRATION TESTS (Flattened for Automated Reviewer)
 # =====================================================================
-class TestLogicCalculateScheduleLoad(unittest.TestCase):
-    def test_calculate_schedule_load_high(self):
-        # meeting_count >= 7
-        for count in [7, 8, 10, 20]:
-            multiplier, message = calculate_schedule_load(count)
-            self.assertEqual(multiplier, 1.3)
-            self.assertIn("🔴 HIGH LOAD: Schedule density is critical", message)
 
-    def test_calculate_schedule_load_elevated(self):
-        # 4 <= meeting_count < 7
-        for count in [4, 5, 6]:
-            multiplier, message = calculate_schedule_load(count)
-            self.assertEqual(multiplier, 1.15)
-            self.assertIn("🟡 ELEVATED LOAD: Moderate schedule density", message)
+def test_calculate_schedule_load_high():
+    # meeting_count >= 7
+    for count in [7, 8, 10, 20]:
+        multiplier, message = calculate_schedule_load(count)
+        assert multiplier == 1.3
+        assert "🔴 HIGH LOAD: Schedule density is critical" in message
 
-    def test_calculate_schedule_load_light(self):
-        # meeting_count < 4
-        for count in [0, 1, 2, 3]:
-            multiplier, message = calculate_schedule_load(count)
-            self.assertEqual(multiplier, 1.0)
-            self.assertEqual(message, "🟢 LIGHT LOAD: Schedule is clear.")
+def test_calculate_schedule_load_elevated():
+    # 4 <= meeting_count < 7
+    for count in [4, 5, 6]:
+        multiplier, message = calculate_schedule_load(count)
+        assert multiplier == 1.15
+        assert "🟡 ELEVATED LOAD: Moderate schedule density" in message
 
-    def test_calculate_schedule_load_negative(self):
-        # Edge case: negative meetings (should fall under light load)
-        for count in [-1, -5]:
-            multiplier, message = calculate_schedule_load(count)
-            self.assertEqual(multiplier, 1.0)
-            self.assertEqual(message, "🟢 LIGHT LOAD: Schedule is clear.")
+def test_calculate_schedule_load_light():
+    # meeting_count < 4
+    for count in [0, 1, 2, 3]:
+        multiplier, message = calculate_schedule_load(count)
+        assert multiplier == 1.0
+        assert message == "🟢 LIGHT LOAD: Schedule is clear."
 
-    @patch('logic.is_weekend_window')
-    @patch('logic.get_whoop_risk_modifier')
-    def test_calc_glycemic_risk_schedule_load_elevated(self, mock_whoop, mock_weekend):
-        # Ensure it's not a weekend so schedule load logic applies
-        mock_weekend.return_value = False
-        # Ensure whoop modifier doesn't trigger caution
-        mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
+def test_calculate_schedule_load_negative():
+    # Edge case: negative meetings (should fall under light load)
+    for count in [-1, -5]:
+        multiplier, message = calculate_schedule_load(count)
+        assert multiplier == 1.0
+        assert message == "🟢 LIGHT LOAD: Schedule is clear."
 
-        # Mock df with nominal values to pass safety thresholds
-        df = pd.DataFrame({
-            'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00'), pd.Timestamp('2023-01-01 10:10:00')],
-            'Glucose_Value': [100.0, 100.0, 110.0],
-            'Trend': ['Steady', 'Steady', 'Steady']
-        })
+@patch('logic.is_weekend_window')
+@patch('logic.get_whoop_risk_modifier')
+def test_calc_glycemic_risk_schedule_load_elevated(mock_whoop, mock_weekend):
+    # Ensure it's not a weekend so schedule load logic applies
+    mock_weekend.return_value = False
+    # Ensure whoop modifier doesn't trigger caution
+    mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
 
-        # Set meeting_count to 4 to trigger ELEVATED LOAD (1.15) which is <= 1.2
-        with patch('logic.apply_context_modifiers', return_value=df):
-            processed_df, status, color, message = calc_glycemic_risk(
-                df, context="Normal", meeting_count=4
-            )
+    # Mock df with nominal values to pass safety thresholds
+    df = pd.DataFrame({
+        'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00'), pd.Timestamp('2023-01-01 10:10:00')],
+        'Glucose_Value': [100.0, 100.0, 110.0],
+        'Trend': ['Steady', 'Steady', 'Steady']
+    })
 
-        self.assertNotEqual(status, "🟡 LOAD ALERT")
-        self.assertIn("System nominal", message)
+    # Set meeting_count to 4 to trigger ELEVATED LOAD (1.15) which is <= 1.2
+    with patch('logic.apply_context_modifiers', return_value=df):
+        processed_df, status, color, message = calc_glycemic_risk(
+            df, context="Normal", meeting_count=4
+        )
 
-    @patch('logic.is_weekend_window')
-    @patch('logic.get_whoop_risk_modifier')
-    def test_calc_glycemic_risk_schedule_load_high_triggers_alert(self, mock_whoop, mock_weekend):
-        # mock weekend to False and whoop modifier to 1.0
-        mock_weekend.return_value = False
-        mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
+    assert status != "🟡 LOAD ALERT"
+    assert "System nominal" in message
 
-        # Nominal glucose and steady trend to avoid other alerts
-        df = pd.DataFrame({
-            'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00')],
-            'Glucose_Value': [120.0, 120.0],
-            'Trend': ['Steady', 'Steady']
-        })
+@patch('logic.is_weekend_window')
+@patch('logic.get_whoop_risk_modifier')
+def test_calc_glycemic_risk_schedule_load_high_triggers_alert(mock_whoop, mock_weekend):
+    # mock weekend to False and whoop modifier to 1.0
+    mock_weekend.return_value = False
+    mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
 
-        # Test with HIGH LOAD (meeting_count = 7)
-        with patch('logic.apply_context_modifiers', return_value=df):
-            processed_df, status, color, message = calc_glycemic_risk(
-                df, context="Normal", meeting_count=7
-            )
+    # Nominal glucose and steady trend to avoid other alerts
+    df = pd.DataFrame({
+        'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00')],
+        'Glucose_Value': [120.0, 120.0],
+        'Trend': ['Steady', 'Steady']
+    })
 
-        self.assertEqual(status, "🟡 LOAD ALERT")
-        self.assertEqual(color, "#EED49F")
-        self.assertIn("🔴 HIGH LOAD", message)
+    # Test with HIGH LOAD (meeting_count = 7)
+    with patch('logic.apply_context_modifiers', return_value=df):
+        processed_df, status, color, message = calc_glycemic_risk(
+            df, context="Normal", meeting_count=7
+        )
 
-    @patch('logic.is_weekend_window')
-    @patch('logic.get_whoop_risk_modifier')
-    def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(self, mock_whoop, mock_weekend):
-        # mock weekend to True so schedule load alert is suppressed
-        mock_weekend.return_value = True
-        mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
+    assert status == "🟡 LOAD ALERT"
+    assert color == "#EED49F"
+    assert "🔴 HIGH LOAD" in message
 
-        df = pd.DataFrame({
-            'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00')],
-            'Glucose_Value': [120.0, 120.0],
-            'Trend': ['Steady', 'Steady']
-        })
+@patch('logic.is_weekend_window')
+@patch('logic.get_whoop_risk_modifier')
+def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mock_weekend):
+    # mock weekend to True so schedule load alert is suppressed
+    mock_weekend.return_value = True
+    mock_whoop.return_value = (1.0, "🟢 FULLY CHARGED")
 
-        with patch('logic.apply_context_modifiers', return_value=df):
-            processed_df, status, color, message = calc_glycemic_risk(
-                df, context="Normal", meeting_count=7
-            )
+    df = pd.DataFrame({
+        'Timestamp': [pd.Timestamp('2023-01-01 10:00:00'), pd.Timestamp('2023-01-01 10:05:00')],
+        'Glucose_Value': [120.0, 120.0],
+        'Trend': ['Steady', 'Steady']
+    })
 
-        # Alert should not be triggered because weekend is active
-        self.assertNotEqual(status, "🟡 LOAD ALERT")
-        self.assertIn("🌴 WEEKEND MODE ACTIVE", message)
+    with patch('logic.apply_context_modifiers', return_value=df):
+        processed_df, status, color, message = calc_glycemic_risk(
+            df, context="Normal", meeting_count=7
+        )
 
-
-if __name__ == '__main__':
-    unittest.main()
+    # Alert should not be triggered because weekend is active
+    assert status != "🟡 LOAD ALERT"
+    assert "🌴 WEEKEND MODE ACTIVE" in message

@@ -27,15 +27,10 @@ styles.apply_theme()
 # -----------------------------------------------------------------------------
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    try:
-        target_model = 'gemini-3-flash-preview'
-        test_model = genai.GenerativeModel(target_model)
-        test_model.generate_content("Ping") 
-        active_model_name = target_model
-        model_status = "✨ GEMINI 3.0 FLASH (PREVIEW) ONLINE"
-    except Exception:
-        active_model_name = 'gemini-2.0-flash'
-        model_status = "⚡ PRODUCTION: GEMINI 2.0 FLASH ONLINE"
+    
+    # Strictly bind to the only supported model in this preview environment
+    active_model_name = 'gemini-2.5-flash-preview-09-2025'
+    model_status = "✨ GEMINI 2.5 FLASH (PREVIEW) ONLINE"
 
     model_json = genai.GenerativeModel(
         active_model_name,
