@@ -3,6 +3,9 @@ import time
 import requests
 import streamlit as st
 from urllib.parse import urlencode
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Path for the local token vault
 TOKEN_FILE = "whoop_tokens.json"
@@ -42,7 +45,8 @@ def get_access_token(auth_code):
         response = requests.post(TOKEN_URL, data=data, timeout=10)
         return response.json()
     except Exception as e:
-        st.error(f"Whoop Auth Error: {e}")
+        logger.error(f"Whoop Auth Error: {e}")
+        st.error("Whoop Auth Error. Please try again.")
         return None
 
 @st.cache_data(ttl=300) # Performance: Cache biometric data for 5 minutes

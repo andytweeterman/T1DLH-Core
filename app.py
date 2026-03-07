@@ -46,7 +46,8 @@ try:
         generation_config={"response_mime_type": "application/json"}
     )
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
+    logger.error(f"API Critical Failure: {e}")
+    st.error("⚠️ API Critical Failure. Please check system logs.")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -104,7 +105,8 @@ try:
         )
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"Data loading failed: {e}")
+    logger.error(f"Data loading failed: {e}")
+    st.error("Data loading failed. Please try again.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
@@ -282,7 +284,8 @@ if audio_bytes:
                 st.session_state.active_view = "Assistant"
                 st.rerun()
             except Exception as e:
-                st.error(f"Voice Analysis failed: {e}")
+                logger.error(f"Voice Analysis failed: {e}")
+                st.error("Voice Analysis failed. Please try again.")
 
 st.divider()
 
@@ -369,7 +372,8 @@ if st.session_state.active_view == "Daily Briefing":
             st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
 
         except Exception as e:
-            st.error(f"Failed to generate briefing. Please check API connection. System error: {e}")
+            logger.error(f"Failed to generate briefing: {e}")
+            st.error("Failed to generate briefing. Please check API connection.")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
@@ -443,7 +447,7 @@ elif st.session_state.active_view == "Assistant":
     with st.form("journal_form", clear_on_submit=True):
         text_input = st.text_area("Life Download (Text Fallback):", placeholder="E.g., 'Just finished rebuilding the deck doors. Legs feel heavy.'")
         
-        if st.form_submit_button("Analyze Correlation", type="primary") and text_input:
+        if st.form_submit_button("Analyze Load", type="primary") and text_input:
             with st.spinner("Correlating subjective report with objective telemetry..."):
                 try:
                     avg_glucose = int(full_data['Glucose_Value'].mean())
@@ -489,8 +493,9 @@ elif st.session_state.active_view == "Assistant":
                     parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
-                except Exception as e: 
-                    st.error(f"Correlation Analysis failed: {e}")
+                except Exception as e:
+                    logger.error(f"Analysis failed: {e}")
+                    st.error("Analysis failed. Please try again.")
                     
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
