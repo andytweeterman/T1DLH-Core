@@ -46,7 +46,7 @@ try:
         generation_config={"response_mime_type": "application/json"}
     )
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
+    st.error("⚠️ API Critical Failure. Please check system logs.")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -119,7 +119,7 @@ try:
         )
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"Data loading failed: {e}")
+    st.error("Data loading failed. Please try again.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
@@ -297,7 +297,7 @@ if audio_bytes:
                 st.session_state.active_view = "Assistant"
                 st.rerun()
             except Exception as e:
-                st.error(f"Voice Analysis failed: {e}")
+                st.error("Voice Analysis failed. Please try again.")
 
 st.divider()
 
@@ -384,7 +384,7 @@ if st.session_state.active_view == "Daily Briefing":
             st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
 
         except Exception as e:
-            st.error(f"Failed to generate briefing. Please check API connection. System error: {e}")
+            st.error("Failed to generate briefing. Please check API connection.")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
@@ -509,7 +509,7 @@ elif st.session_state.active_view == "Assistant":
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
                 except Exception as e: 
-                    st.error(f"Correlation Analysis failed: {e}")
+                    st.error("Correlation Analysis failed. Please try again.")
                     
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
