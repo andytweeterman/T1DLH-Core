@@ -61,6 +61,9 @@ def test_get_mock_cgm_trends():
         assert df['Trend'].iloc[i] == expected_trend
 
 def test_get_mock_cgm_deterministic():
+    # Clear cache to ensure deterministic logic generates new values
+    fetch_health_data.clear()
+
     # Because there's a lot of randomness, let's just make sure multiple calls return different data
     fetch_health_data.clear()
     df1 = fetch_health_data()

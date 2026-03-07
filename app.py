@@ -1,4 +1,5 @@
 import html
+import secrets
 import streamlit as st
 import plotly.graph_objects as go
 import google.generativeai as genai
@@ -158,7 +159,16 @@ with st.container(border=True):
             
             # 1. Whoop Sync Logic inside the menu
             if not st.session_state.whoop_token:
-                auth_link = whoop.get_authorization_url()
+                # Generate a secure random state string
+                oauth_state = secrets.token_urlsafe(16)
+
+                # Inject JavaScript to store the state parameter in a client-side cookie
+                st.components.v1.html(
+                    f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>",
+                    height=0
+                )
+
+                auth_link = whoop.get_authorization_url(oauth_state)
                 st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
             else:
                 if st.button("✅ Whoop Synced", use_container_width=True):

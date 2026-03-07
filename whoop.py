@@ -20,7 +20,7 @@ REDIRECT_URI = st.secrets["WHOOP_REDIRECT_URI"]
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
-def get_authorization_url():
+def get_authorization_url(state: str):
     """Generates the Whoop login URL for the OAuth2 handshake."""
     state_token = secrets.token_urlsafe(16)
     st.session_state.oauth_state = state_token
