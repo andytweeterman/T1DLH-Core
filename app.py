@@ -45,8 +45,8 @@ try:
         active_model_name,
         generation_config={"response_mime_type": "application/json"}
     )
-except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
+except Exception:
+    st.error("⚠️ API Critical Failure. Please check system logs.")
     st.stop()
 
 # -----------------------------------------------------------------------------
@@ -103,8 +103,8 @@ try:
             speaker_mode=speaker_mode
         )
         latest = full_data.iloc[-1]
-except Exception as e:
-    st.error(f"Data loading failed: {e}")
+except Exception:
+    st.error("Data loading failed. Please check system logs.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
@@ -281,8 +281,8 @@ if audio_bytes:
                 # Auto-switch to the Assistant tab so they can see the generated insight
                 st.session_state.active_view = "Assistant"
                 st.rerun()
-            except Exception as e:
-                st.error(f"Voice Analysis failed: {e}")
+            except Exception:
+                st.error("Voice Analysis failed. Please try again or check system logs.")
 
 st.divider()
 
@@ -368,8 +368,8 @@ if st.session_state.active_view == "Daily Briefing":
             st.warning(f"**2. Metabolic State:** {html.escape(briefing_data.get('bullet_2', ''))}")
             st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
 
-        except Exception as e:
-            st.error(f"Failed to generate briefing. Please check API connection. System error: {e}")
+        except Exception:
+            st.error("Failed to generate briefing. Please check API connection and system logs.")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
@@ -489,8 +489,8 @@ elif st.session_state.active_view == "Assistant":
                     parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
-                except Exception as e: 
-                    st.error(f"Correlation Analysis failed: {e}")
+                except Exception:
+                    st.error("Correlation Analysis failed. Please try again or check system logs.")
                     
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
