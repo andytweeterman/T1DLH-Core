@@ -188,22 +188,26 @@ st.divider()
 # 6. NAVIGATION
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state:
-    st.session_state.active_view = "Wellness"
+    st.session_state.active_view = "Daily Briefing" # Set new default
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
+    if st.button("Daily Briefing", use_container_width=True, type="primary" if st.session_state.active_view == "Daily Briefing" else "secondary"):
+        st.session_state.active_view = "Daily Briefing"
+        st.rerun()
+with c2:
     if st.button("Wellness", use_container_width=True, type="primary" if st.session_state.active_view == "Wellness" else "secondary"):
         st.session_state.active_view = "Wellness"
         st.rerun()
-with c2:
+with c3:
     if st.button("Schedule", use_container_width=True, type="primary" if st.session_state.active_view == "Schedule" else "secondary"):
         st.session_state.active_view = "Schedule"
         st.rerun()
-with c3:
+with c4:
     if st.button("Assistant", use_container_width=True, type="primary" if st.session_state.active_view == "Assistant" else "secondary"):
         st.session_state.active_view = "Assistant"
         st.rerun()
-with c4:
+with c5:
     if st.button("Sleep", use_container_width=True, type="primary" if st.session_state.active_view == "Sleep" else "secondary"):
         st.session_state.active_view = "Sleep"
         st.rerun()
@@ -212,6 +216,40 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 # 7. RENDER VIEWS
 # -----------------------------------------------------------------------------
+
+# --- VIEW: DAILY BRIEFING (BLUF) ---
+if st.session_state.active_view == "Daily Briefing":
+    st.markdown("### 📋 Executive Daily Briefing")
+    
+    with st.spinner("Compiling tactical summary..."):
+        try:
+            # FIX: Use the globally defined active_model_name instead of a hardcoded string
+            briefing_model = genai.GenerativeModel(active_model_name)
+            
+            # Gather the current context variables
+            current_glucose = int(latest['Glucose_Value']) if 'latest' in locals() else "Unknown"
+            trend = latest['Trend'] if 'latest' in locals() else "Unknown"
+            rec_score = whoop_metrics.get('score', {}).get('recovery_score', 'Unknown') if whoop_metrics else "Not Synced"
+            
+            # The Prompt
+            bluf_prompt = f"""
+            You are an executive health advisor. Provide a 3-bullet "Bottom Line Up Front" (BLUF) briefing for today.
+            Data:
+            - Meetings next 8h: {meeting_count}
+            - Whoop Recovery: {rec_score}%
+            - Current Glucose: {current_glucose} mg/dL (Trend: {trend})
+            - Context: {st.session_state.current_context}
+            
+            Rules: Keep it non-technical, highly actionable, and under 50 words total. Do not use medical jargon. Focus on cognitive load and energy management.
+            """
+            
+            response = briefing_model.generate_content(bluf_prompt)
+            
+            # Display the result in a clean, elevated card
+            st.info(response.text)
+            
+        except Exception as e:
+            st.error(f"Failed to generate briefing: {e}. Please check API connection.")
 
 # --- VIEW A: WELLNESS ---
 if st.session_state.active_view == "Wellness":
