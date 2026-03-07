@@ -84,17 +84,6 @@ if "code" in st.query_params and not st.session_state.whoop_token:
         else:
             st.sidebar.error("Whoop Auth Failed. Please try again.")
 
-# 4. Render the UI
-with st.sidebar:
-    st.divider()
-    if not st.session_state.whoop_token:
-        auth_link = whoop.get_authorization_url()
-        st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True, type="primary")
-    else:
-        st.success("✅ Whoop Synced")
-        if st.button("Refresh Biometrics"):
-            st.rerun()
-
 query_params = st.query_params
 if "code" in query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
@@ -158,7 +147,8 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    p_col1, p_col2, p_col3, p_spacer = st.columns([1.5, 2, 3, 5])
+    # Adjusted column weights to make room for the new Whoop button
+    p_col1, p_col2, p_col3, p_col4, p_spacer = st.columns([1.5, 2.5, 3, 3, 1])
     
     with p_col1:
         st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; margin-top: 10px;'>Live Status</p>", unsafe_allow_html=True)
@@ -176,6 +166,15 @@ with st.container(border=True):
             if st.button("Apply Changes"):
                 st.session_state.current_context = new_ctx
                 st.rerun()
+                
+    with p_col4:
+        # Dynamic Whoop Pill right in the header
+        if not st.session_state.whoop_token:
+            auth_link = whoop.get_authorization_url()
+            st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
+        else:
+            if st.button("✅ Whoop Synced", use_container_width=True):
+                st.rerun() # Acts as a manual data refresh
     
     st.markdown(f"""
         <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); font-style: italic; border-left: 3px solid var(--accent-start); padding-left: 10px;">
@@ -230,19 +229,29 @@ if st.session_state.active_view == "Wellness":
     # ROW 2: Systemic Resilience (Whoop)
     if st.session_state.whoop_token and whoop_metrics:
         st.markdown("#### ⚡ Systemic Resilience")
-        cols_whoop = st.columns(3)
+        
+        # Expanding to 5 columns for the full telemetry suite
+        cols_whoop = st.columns(5)
+        
+        # Safely extract all metrics
         recovery_val = whoop_metrics.get('score', {}).get('recovery_score', 0)
         hrv_val = int(whoop_metrics.get('score', {}).get('hrv_rmssd_milli_seconds', 0))
         rhr_val = int(whoop_metrics.get('score', {}).get('resting_heart_rate_beats_per_minute', 0))
-        rec_color = "normal" if recovery_val > 66 else "inverse" if recovery_val < 34 else "off"
+        strain_val = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1)
+        sleep_val = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0)
         
-        cols_whoop[0].metric("Recovery Score", f"{recovery_val}%", delta=None, delta_color=rec_color)
-        cols_whoop[1].metric("HRV (ms)", hrv_val)
-        cols_whoop[2].metric("Resting HR", rhr_val, delta_color="inverse")
+        # Color coding logic for quick ERM scanning
+        rec_color = "normal" if recovery_val > 66 else "inverse" if recovery_val < 34 else "off"
+        sleep_color = "normal" if sleep_val > 85 else "inverse" if sleep_val < 70 else "off"
+        
+        # Populate the metrics
+        cols_whoop[0].metric("Recovery", f"{recovery_val}%", delta=None, delta_color=rec_color)
+        cols_whoop[1].metric("Sleep Perf", f"{sleep_val}%", delta=None, delta_color=sleep_color)
+        cols_whoop[2].metric("Day Strain", f"{strain_val}")
+        cols_whoop[3].metric("HRV (ms)", hrv_val)
+        cols_whoop[4].metric("Resting HR", rhr_val, delta_color="inverse")
     else:
         st.info("🔗 Connect Whoop in the sidebar to view real-time Resilience metrics.")
-
-    st.markdown("---")
     
     # Universal Radio Toggle instead of segmented_control
     time_window = st.radio(
