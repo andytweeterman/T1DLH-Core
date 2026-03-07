@@ -25,6 +25,7 @@ def fetch_health_data():
 
 def apply_context_modifiers(df, context):
     """Injects real-life chaos into the base telemetry."""
+    # Do not set np.random.seed here to maintain non-deterministic behavior for tests
     noise = np.random.normal(0, 3, len(df)) 
     
     if context == "Stressed":
