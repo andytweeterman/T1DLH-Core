@@ -265,7 +265,7 @@ if audio_bytes:
                 Return a valid JSON object with EXACTLY these keys:
                 - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                 - "summary": "A 3-word summary."
-                - "scores": {{"bio_strain": 5, "cog_load": 5}}
+                - "scores": {"bio_strain": 5, "cog_load": 5}
                 - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                 """
                 
@@ -361,14 +361,6 @@ if st.session_state.active_view == "Daily Briefing":
             - Whoop Metrics: {rec_score}% Recovery, {sleep_perf}% Sleep, {strain} Day Strain.
             - Current Glucose: {bg_val} mg/dL, Trend: {trend}.
             - Active Context: {st.session_state.current_context}
-
-            Return a valid JSON string containing EXACTLY this structure:
-            {{
-              "bullet_1": "Actionable insight combining schedule load and Whoop recovery/sleep.",
-              "bullet_2": "Actionable insight regarding metabolic readiness (glucose) and current strain.",
-              "bullet_3": "A single sentence recommending a specific action to take right now."
-            }}
-            Tone: Professional, pragmatic, and encouraging. Avoid medical jargon. Do not use Markdown formatting in the JSON values. Focus on cognitive and physical energy management.
             """
 
             briefing_model = genai.GenerativeModel(
@@ -494,7 +486,7 @@ elif st.session_state.active_view == "Assistant":
                     Return a valid JSON object with EXACTLY these keys:
                     - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                     - "summary": "A 3-word summary."
-                    - "scores": {{"bio_strain": 5, "cog_load": 5}}
+                    - "scores": {"bio_strain": 5, "cog_load": 5}
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
