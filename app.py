@@ -467,7 +467,7 @@ elif st.session_state.active_view == "Assistant":
     with st.form("journal_form", clear_on_submit=True):
         text_input = st.text_area("Life Download (Text Fallback):", placeholder="E.g., 'Just finished rebuilding the deck doors. Legs feel heavy.'")
         
-        if st.form_submit_button("Analyze Correlation", type="primary") and text_input:
+        if st.form_submit_button("Analyze Load", type="primary") and text_input:
             with st.spinner("Correlating subjective report with objective telemetry..."):
                 try:
                     avg_glucose = int(full_data['Glucose_Value'].mean())
