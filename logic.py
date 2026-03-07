@@ -62,11 +62,13 @@ def apply_context_modifiers(df, context):
 # 2. RISK ANALYSIS HELPERS
 # -----------------------------------------------------------------------------
 def calculate_schedule_load(meeting_count):
-    """Translates calendar density into an ERM risk multiplier."""
+    """
+    Translates calendar density into an ERM risk multiplier.
+    """
     if meeting_count >= 7:
-        return 1.3, "🔴 HIGH LOAD: Schedule density is critical."
+        return 1.3, "🔴 HIGH LOAD: Schedule density is critical. Expect cortisol-driven resistance."
     elif meeting_count >= 4:
-        return 1.15, "🟡 ELEVATED LOAD: Moderate schedule density."
+        return 1.15, "🟡 ELEVATED LOAD: Moderate schedule density. Monitor baseline."
     return 1.0, "🟢 LIGHT LOAD: Schedule is clear."
 
 def get_whoop_risk_modifier(whoop_metrics):
