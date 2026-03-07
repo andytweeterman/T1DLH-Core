@@ -7,6 +7,8 @@ import secrets
 from urllib.parse import urlencode
 import secrets
 
+logger = logging.getLogger(__name__)
+
 # Path for the local token vault
 TOKEN_FILE = "whoop_tokens.json"
 
