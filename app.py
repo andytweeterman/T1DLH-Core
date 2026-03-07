@@ -66,18 +66,10 @@ if not st.session_state.whoop_token:
 # 3. If the vault is empty, check if we are returning from a manual login
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
-        # Validate OAuth state to prevent CSRF attacks
-        url_state = st.query_params.get("state")
-        session_state_token = st.session_state.get("oauth_state")
-        
-        if not url_state or not session_state_token or url_state != session_state_token:
-            st.error("Invalid state parameter. Authentication aborted to prevent CSRF.")
-            # Clear invalid params
-            st.query_params.clear()
-        else:
-            # Clear the state from session state so it can't be reused
-            del st.session_state["oauth_state"]
+        query_state = st.query_params.get("state")
+        session_state = st.session_state.get("oauth_state")
 
+        if query_state and session_state and query_state == session_state:
             auth_code = st.query_params["code"]
             token_data = whoop.get_access_token(auth_code)
 
@@ -89,10 +81,21 @@ if "code" in st.query_params and not st.session_state.whoop_token:
                 st.rerun()
             else:
                 st.error("Whoop Auth Failed. Please try again.")
+        else:
+            st.error("Invalid or missing state parameter. Authentication failed.")
+            st.query_params.clear()
 
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
+@st.cache_data(ttl=300) # Cache simulation for 5 minutes
+def get_cached_health_data():
+    return logic.fetch_health_data()
+
+@st.cache_data(ttl=60) # Cache risk state for 1 minute
+def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
+    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode)
+
 try:
     with st.spinner("Syncing Health & Schedule Data..."):
         # A. Fetch Whoop Data
@@ -104,10 +107,10 @@ try:
         meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
         
         # C. Fetch Dexcom/Health Data
-        raw_data = logic.fetch_health_data()
+        raw_data = get_cached_health_data()
         
         # D. Calculate Risk 
-        full_data, status, color_hex, reason = logic.calc_glycemic_risk(
+        full_data, status, color_hex, reason = get_cached_glycemic_risk(
             raw_data, 
             st.session_state.current_context,
             whoop_data=whoop_metrics,
@@ -476,11 +479,9 @@ elif st.session_state.active_view == "Assistant":
                         "whoop_day_strain": w_strain
                     }
                     
-                    prompt = f"""
+                    system_instruction = f"""
                     You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
                     Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
-                    
-                    The user just reported the following subjective state: "{text_input}"
                     
                     Correlate their subjective report with their objective telemetry. 
                     Return a valid JSON object with EXACTLY these keys:
@@ -490,7 +491,13 @@ elif st.session_state.active_view == "Assistant":
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    response = model_json.generate_content(prompt)
+                    assistant_model = genai.GenerativeModel(
+                        active_model_name,
+                        generation_config={"response_mime_type": "application/json"},
+                        system_instruction=system_instruction
+                    )
+
+                    response = assistant_model.generate_content(text_input)
                     clean_text = response.text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
