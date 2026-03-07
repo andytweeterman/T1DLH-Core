@@ -61,7 +61,7 @@ def apply_context_modifiers(df, context):
 # -----------------------------------------------------------------------------
 # 2. RISK ANALYSIS HELPERS
 # -----------------------------------------------------------------------------
-def calculate_schedule_load(meeting_count):
+def _calculate_schedule_load(meeting_count):
     """Translates calendar density into an ERM risk multiplier."""
     if meeting_count >= 7:
         return 1.3, "🔴 HIGH LOAD: Schedule density is critical."
@@ -141,7 +141,7 @@ def calc_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mo
     latest_trend = df['Trend'].iloc[-1]
     
     whoop_modifier, whoop_status = get_whoop_risk_modifier(whoop_data)
-    sched_modifier, sched_status = calculate_schedule_load(meeting_count)
+    sched_modifier, sched_status = _calculate_schedule_load(meeting_count)
     weekend_active = is_weekend_window()
 
     # A. Safety Thresholds
