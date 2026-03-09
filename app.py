@@ -26,7 +26,7 @@ styles.apply_theme()
 st.markdown("""
     <style>
     /* Target the Voice Dump popover button in the 3rd column */
-    div[data-testid="column"]:nth-of-type(3) button {
+    div[data-testid="column"]:nth-of-type(3) [data-testid="stPopover"] > button {
         background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
         color: white !important;
         border: none !important;
@@ -152,7 +152,8 @@ with st.container(border=True):
         st.markdown(f'<div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; width: 100%; text-align: center; margin:0;">{safe_status}</div>', unsafe_allow_html=True)
     
     with p_col3:
-        with st.popover("🎙️ Voice Dump", use_container_width=True):
+        with st.popover("Smart Health Companion", use_container_width=True):
+            st.markdown("Ask a question or log how you are feeling. The AI will correlate your input with your live telemetry.")
             st.caption("Tap the mic to log a voice note.")
             audio_bytes = audio_recorder(
                 text="",
@@ -264,7 +265,7 @@ if audio_bytes:
 if "active_view" not in st.session_state:
     st.session_state.active_view = "Daily Briefing"
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4 = st.columns(4)
 with c1:
     if st.button("Daily Briefing", use_container_width=True, type="primary" if st.session_state.active_view == "Daily Briefing" else "secondary"):
         st.session_state.active_view = "Daily Briefing"
@@ -278,10 +279,6 @@ with c3:
         st.session_state.active_view = "Schedule"
         st.rerun()
 with c4:
-    if st.button("Assistant", use_container_width=True, type="primary" if st.session_state.active_view == "Assistant" else "secondary"):
-        st.session_state.active_view = "Assistant"
-        st.rerun()
-with c5:
     if st.button("Sleep", use_container_width=True, type="primary" if st.session_state.active_view == "Sleep" else "secondary"):
         st.session_state.active_view = "Sleep"
         st.rerun()
@@ -406,82 +403,6 @@ elif st.session_state.active_view == "Schedule":
     with h4: st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>MEETINGS</div><div style='font-weight:800;'>{meeting_count} ({density_label})</div></div>", unsafe_allow_html=True)
     st.markdown("---")
     st.info(f"**Agentic Insight:** The Risk Engine is currently factoring in **{meeting_count} meetings** over the next 8 hours to adjust your glycemic sensitivity threshold.")
-
-# --- VIEW C: ASSISTANT ---
-elif st.session_state.active_view == "Assistant":
-    st.markdown("### 🧬 Smart Health Companion")
-    st.markdown("Ask a question or log how you are feeling. The AI will correlate your input with your live telemetry.")
-    
-    if "journal_history" not in st.session_state: st.session_state.journal_history = []
-    
-    with st.form("journal_form", clear_on_submit=True):
-        text_input = st.text_area("Life Download (Text Fallback):", placeholder="E.g., 'Just finished rebuilding the deck doors. Legs feel heavy.'")
-        
-        if st.form_submit_button("Analyze Load", type="primary") and text_input:
-            with st.spinner("Correlating subjective report with objective telemetry..."):
-                try:
-                    avg_glucose = int(full_data['Glucose_Value'].mean())
-                    std_dev = int(full_data['Glucose_Value'].std())
-                    w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
-                    w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
-                    w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
-                    
-                    live_context = {
-                        "active_context": st.session_state.current_context,
-                        "meetings_next_8h": meeting_count,
-                        "is_weekend_window": logic.is_weekend_window(),
-                        "current_glucose": int(latest['Glucose_Value']),
-                        "glucose_trend": latest['Trend'],
-                        "glucose_volatility_std_dev": std_dev,
-                        "whoop_recovery": w_rec,
-                        "whoop_sleep": w_sleep,
-                        "whoop_day_strain": w_strain
-                    }
-                    
-                    system_instruction = f"""
-                    You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
-                    Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
-                    
-                    Correlate their subjective report with their objective telemetry. 
-                    Return ONLY a valid JSON object with EXACTLY these keys. Do not include markdown or extra text:
-                    - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
-                    - "summary": "A 3-word summary."
-                    - "scores": {{"bio_strain": 5, "cog_load": 5}}
-                    - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
-                    """
-                    
-                    response = client.messages.create(
-                        model=active_model_name,
-                        max_tokens=800,
-                        system=system_instruction,
-                        messages=[
-                            {"role": "user", "content": text_input}
-                        ]
-                    )
-                    
-                    clean_text = response.content[0].text.strip()
-                    
-                    # Safe replacement to avoid markdown parser cutoff
-                    markdown_fence = chr(96) * 3
-                    clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
-                    
-                    parsed = json.loads(clean_text)
-                    parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    st.session_state.journal_history.insert(0, parsed)
-                    st.rerun()
-                except Exception as e: 
-                    st.error(f"Correlation Analysis failed. Details: {e}")
-                    
-    if st.session_state.journal_history:
-        entry = st.session_state.journal_history[0]
-        st.success(f"**Agentic Insight:** {html.escape(entry.get('reply', ''))}")
-        
-        sc = entry.get("scores", {"bio_strain": 0, "cog_load": 0})
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🧬 Bio-Strain", f"{sc.get('bio_strain', 0)}/10")
-        c2.metric("🧠 Cog-Load", f"{sc.get('cog_load', 0)}/10")
-        c3.metric("📌 Status", html.escape(entry.get("summary", "")))
-        st.info(f"**📉 Horizon Scan:** {html.escape(entry.get('impact_prediction', ''))}")
 
 # --- VIEW D: SLEEP IMPACT ---
 elif st.session_state.active_view == "Sleep":
