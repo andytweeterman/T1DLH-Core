@@ -120,7 +120,8 @@ try:
         )
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error("Data loading failed. Please try again.")
+    st.error(f"Data loading failed: {e}. Please check integrations.")
+    st.stop()  # <--- THIS STOPS THE APP FROM CRASHING LATER ON
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
@@ -193,7 +194,7 @@ with st.container(border=True):
                     f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>",
                     height=0
                 )
-                auth_link = whoop.get_authorization_url(oauth_state)
+                auth_link = whoop.get_authorization_url() # <--- REMOVED INVALID ARGUMENT
                 st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
             else:
                 if st.button("✅ Whoop Synced", use_container_width=True):
