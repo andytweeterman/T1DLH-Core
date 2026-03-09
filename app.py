@@ -167,11 +167,10 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    # Adjusted column layout to 4 columns to remove the abstract "Status" pill
     hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
     
     with hc1:
-        st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 8px;'>Active Load Vectors</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 8px;'>Total Life Drivers</p>", unsafe_allow_html=True)
         
         # Cleanly parse the reason string into individual vector tags
         parts = safe_reason.split("|")
@@ -182,8 +181,24 @@ with st.container(border=True):
             if clean_part:
                 vectors.append(html.escape(clean_part))
         
-        # Build HTML for the mini-indicators
-        tags_html = "".join([f"<div style='display:inline-block; background-color:#1A1A1A; color:#E0E0E0; padding:6px 12px; border-radius:6px; font-size:0.75rem; font-weight:700; margin-right:8px; margin-bottom:8px; border:1px solid #333; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{t}</div>" for t in vectors[:3]])
+        # Build beautifully styled pill buttons for the Drivers
+        tags_html = ""
+        for t in vectors[:3]:
+            # Assign colors based on risk severity logic
+            if "🔴" in t or "🔥" in t or "❄️" in t:
+                bg, text, border = "rgba(237, 135, 150, 0.15)", "#ED8796", "rgba(237, 135, 150, 0.4)"
+            elif "🟡" in t or "⚡" in t or "💤" in t:
+                bg, text, border = "rgba(238, 212, 159, 0.15)", "#EED49F", "rgba(238, 212, 159, 0.4)"
+            elif "🟢" in t or "☁️" in t:
+                bg, text, border = "rgba(166, 218, 149, 0.15)", "#A6DA95", "rgba(166, 218, 149, 0.4)"
+            else:
+                bg, text, border = "rgba(139, 92, 246, 0.15)", "#B4A1F5", "rgba(139, 92, 246, 0.4)"
+            
+            # Make the text friendly and title cased
+            friendly_text = t.replace("BENIGN ENVIRONMENT", "CLEAR WEATHER").title()
+            
+            tags_html += f"<div style='display:inline-flex; align-items:center; background-color:{bg}; color:{text}; padding:4px 12px; border-radius:20px; font-size:0.75rem; font-weight:700; margin-right:8px; margin-bottom:8px; border:1px solid {border}; box-shadow: 0 2px 5px rgba(0,0,0,0.1);'>{friendly_text}</div>"
+        
         st.markdown(tags_html, unsafe_allow_html=True)
     
     with hc2:
@@ -662,7 +677,11 @@ if st.session_state.get("journal_history"):
 elif st.session_state.active_view == "Sleep":
     st.markdown("### 🌙 Sleep & Recovery Correlation")
     if st.session_state.whoop_token and whoop_metrics:
-        sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 85)
+        score_data = whoop_metrics.get('score', {})
+        sleep_perf = score_data.get('sleep_performance_percentage', 85)
+        recovery_score = score_data.get('recovery_score', 0)
+        hrv = int(score_data.get('hrv_rmssd_milli_seconds', 0))
+        rhr = int(score_data.get('resting_heart_rate_beats_per_minute', 0))
         
         s_time_window = st.radio("Overnight Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
         s_row_mapping = {"4h": 48, "8h": 96, "12h": 144}
@@ -670,17 +689,26 @@ elif st.session_state.active_view == "Sleep":
         
         std_dev = int(overnight_df['Glucose_Value'].std())
         
-        s_col1, s_col2 = st.columns(2)
-        with s_col1: st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
-        with s_col2: st.metric("Overnight Volatility", f"±{std_dev} mg/dL", delta="Stable" if std_dev < 15 else "Erratic", delta_color="normal" if std_dev < 15 else "inverse")
+        st.markdown("##### 💤 Whoop Recovery Metrics")
+        s_col1, s_col2, s_col3, s_col4, s_col5 = st.columns(5)
+        with s_col1: st.metric("Sleep Perf", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
+        with s_col2: st.metric("Recovery", f"{recovery_score}%", delta="Ready" if recovery_score > 66 else "Strained", delta_color="normal" if recovery_score > 66 else "inverse")
+        with s_col3: st.metric("HRV", f"{hrv} ms")
+        with s_col4: st.metric("Resting HR", f"{rhr} bpm")
+        with s_col5: st.metric("Overnight Volatility", f"±{std_dev} mg/dL", delta="Stable" if std_dev < 15 else "Erratic", delta_color="normal" if std_dev < 15 else "inverse")
+        
         st.markdown("---")
         
+        st.markdown("##### 🩸 Overnight Blood Sugar")
         sleep_fig = go.Figure()
         sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
+        sleep_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5)
+        sleep_fig.add_hline(y=70, line_dash="dash", line_color="#ED8796", annotation_text="LOW GATES")
+        
         sleep_fig.update_layout(
             height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
             xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True),
-            margin=dict(l=0, r=0, t=30, b=0)
+            margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL"
         )
         st.plotly_chart(sleep_fig, use_container_width=True, config={'displayModeBar': False})
         
@@ -691,7 +719,7 @@ elif st.session_state.active_view == "Sleep":
             std_g = int(overnight_df['Glucose_Value'].std())
             lat_g = int(overnight_df['Glucose_Value'].iloc[-1])
             
-            summary = get_ai_chart_summary(f"Overnight Glucose (with {sleep_perf}% Sleep Performance)", s_time_window, avg_g, min_g, max_g, std_g, lat_g)
+            summary = get_ai_chart_summary(f"Overnight Glucose (with {sleep_perf}% Sleep Performance and {recovery_score}% Recovery)", s_time_window, avg_g, min_g, max_g, std_g, lat_g)
             st.success(f"**🤖 Agentic Synthesis:** {summary}")
     else:
         st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
