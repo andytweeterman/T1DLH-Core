@@ -2,7 +2,7 @@ import html
 import secrets
 import streamlit as st
 import plotly.graph_objects as go
-import google.generativeai as genai
+import anthropic
 import styles
 import logic
 import json
@@ -23,19 +23,15 @@ st.set_page_config(
 styles.apply_theme()
 
 # -----------------------------------------------------------------------------
-# 2. INITIALIZE GEMINI CLIENT
+# 2. INITIALIZE ANTHROPIC CLIENT (CLAUDE)
 # -----------------------------------------------------------------------------
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
-    # Use the standard public model name
-    active_model_name = 'gemini-2.5-flash' 
-    model_status = "✨ GEMINI 2.5 FLASH ONLINE"
+    # Use the latest Sonnet model
+    active_model_name = 'claude-3-7-sonnet-20250219' 
+    model_status = "✨ CLAUDE SONNET ONLINE"
 
-    model_json = genai.GenerativeModel(
-        active_model_name,
-        generation_config={"response_mime_type": "application/json"}
-    )
 except Exception as e:
     st.error(f"⚠️ API Critical Failure. Details: {e}")
     st.stop()
@@ -243,67 +239,7 @@ if audio_bytes:
         st.session_state.last_audio_hash = audio_hash
         
         with st.spinner("Processing Voice Dump and Correlating Telemetry..."):
-            try:
-                avg_glucose = int(full_data['Glucose_Value'].mean())
-                std_dev = int(full_data['Glucose_Value'].std())
-                w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
-                w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
-                w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
-                
-                live_context = {
-                    "active_context": st.session_state.current_context,
-                    "meetings_next_8h": meeting_count,
-                    "is_weekend_window": logic.is_weekend_window(),
-                    "current_glucose": int(latest['Glucose_Value']),
-                    "glucose_trend": latest['Trend'],
-                    "glucose_volatility_std_dev": std_dev,
-                    "whoop_recovery": w_rec,
-                    "whoop_sleep": w_sleep,
-                    "whoop_day_strain": w_strain
-                }
-                
-                system_instruction = f"""
-                You are an elite clinical AI assistant managing a high-performer's physiological and cognitive load.
-                Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
-                
-                The user will provide an audio brain dump. Listen to the audio and correlate their subjective state with their objective telemetry.
-                Return a valid JSON object with EXACTLY these keys:
-                - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
-                - "summary": "A 3-word summary."
-                - "scores": {"bio_strain": 5, "cog_load": 5}
-                - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
-                """
-                
-                secure_model = genai.GenerativeModel(
-                    active_model_name,
-                    system_instruction=system_instruction,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-
-                # Bundle the text prompt and raw audio bytes natively into Gemini
-                audio_part = {
-                    "mime_type": "audio/wav",
-                    "data": audio_bytes
-                }
-                
-                response = secure_model.generate_content([audio_part])
-                clean_text = response.text.strip()
-                
-                markdown_fence = chr(96) * 3
-                clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
-                
-                parsed = json.loads(clean_text)
-                parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                
-                if "journal_history" not in st.session_state: 
-                    st.session_state.journal_history = []
-                st.session_state.journal_history.insert(0, parsed)
-                
-                # Auto-switch to the Assistant tab so they can see the generated insight
-                st.session_state.active_view = "Assistant"
-                st.rerun()
-            except Exception as e:
-                st.error("Voice Analysis failed. Please try again.")
+            st.error("🎙️ **Claude API Limitation:** Anthropic does not currently accept raw audio files. To use voice notes, please integrate a transcription service (like OpenAI Whisper) to convert `audio_bytes` to text first.")
 
 st.divider()
 
@@ -366,16 +302,20 @@ if st.session_state.active_view == "Daily Briefing":
             - Whoop Metrics: {rec_score}% Recovery, {sleep_perf}% Sleep, {strain} Day Strain.
             - Current Glucose: {bg_val} mg/dL, Trend: {trend}.
             - Active Context: {st.session_state.current_context}
+            
+            Return ONLY a valid JSON object with the exact keys: "bullet_1", "bullet_2", "bullet_3". Do not include markdown formatting or extra text.
             """
 
-            briefing_model = genai.GenerativeModel(
-                active_model_name,
-                generation_config={"response_mime_type": "application/json"},
-                system_instruction=system_instruction
+            response = client.messages.create(
+                model=active_model_name,
+                max_tokens=500,
+                system=system_instruction,
+                messages=[
+                    {"role": "user", "content": "Generate the executive daily briefing now."}
+                ]
             )
-
-            response = briefing_model.generate_content("Generate the executive daily briefing now.")
-            clean_text = response.text.strip()
+            
+            clean_text = response.content[0].text.strip()
             
             # Replaced the .startswith method with safe replacement to avoid parser cutoff
             markdown_fence = chr(96) * 3
@@ -388,7 +328,7 @@ if st.session_state.active_view == "Daily Briefing":
             st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
 
         except Exception as e:
-            st.error("Failed to generate briefing. Please check API connection.")
+            st.error(f"Failed to generate briefing. Details: {e}")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
@@ -488,21 +428,23 @@ elif st.session_state.active_view == "Assistant":
                     Here is the user's real-time hardware telemetry: {json.dumps(live_context)}
                     
                     Correlate their subjective report with their objective telemetry. 
-                    Return a valid JSON object with EXACTLY these keys:
+                    Return ONLY a valid JSON object with EXACTLY these keys. Do not include markdown or extra text:
                     - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
                     - "summary": "A 3-word summary."
-                    - "scores": {"bio_strain": 5, "cog_load": 5}
+                    - "scores": {{"bio_strain": 5, "cog_load": 5}}
                     - "impact_prediction": "A 1-sentence prediction of how their current state and telemetry will impact their glucose over the next 2 hours."
                     """
                     
-                    assistant_model = genai.GenerativeModel(
-                        active_model_name,
-                        generation_config={"response_mime_type": "application/json"},
-                        system_instruction=system_instruction
+                    response = client.messages.create(
+                        model=active_model_name,
+                        max_tokens=800,
+                        system=system_instruction,
+                        messages=[
+                            {"role": "user", "content": text_input}
+                        ]
                     )
-
-                    response = assistant_model.generate_content(text_input)
-                    clean_text = response.text.strip()
+                    
+                    clean_text = response.content[0].text.strip()
                     
                     # Safe replacement to avoid markdown parser cutoff
                     markdown_fence = chr(96) * 3
@@ -513,7 +455,7 @@ elif st.session_state.active_view == "Assistant":
                     st.session_state.journal_history.insert(0, parsed)
                     st.rerun()
                 except Exception as e: 
-                    st.error("Correlation Analysis failed. Please try again.")
+                    st.error(f"Correlation Analysis failed. Details: {e}")
                     
     if st.session_state.journal_history:
         entry = st.session_state.journal_history[0]
