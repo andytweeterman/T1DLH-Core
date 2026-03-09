@@ -160,8 +160,8 @@ with st.container(border=True):
     with p_col4:
         with st.popover("🍽️ Smart Meals", use_container_width=True):
             st.markdown("Snap a photo of your meal to estimate carbohydrates and metabolic impact.")
-            # Default to the rear camera on mobile devices
-            food_image = st.camera_input("Food Scanner", label_visibility="collapsed", facing_mode="environment")
+            # Removed the unsupported facing_mode parameter to prevent the TypeError crash
+            food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
             
             st.divider()
             st.markdown("##### 🔍 Database Lookup")
