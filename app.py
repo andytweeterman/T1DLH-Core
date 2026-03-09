@@ -29,8 +29,8 @@ try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     
     # Use the latest Sonnet model
-    active_model_name = 'claude-3-7-sonnet-20250219' 
-    model_status = "✨ CLAUDE SONNET ONLINE"
+    active_model_name = 'claude-sonnet-4-6' 
+    model_status = "✨ CLAUDE SONNET 4.6 ONLINE"
 
 except Exception as e:
     st.error(f"⚠️ API Critical Failure. Details: {e}")
