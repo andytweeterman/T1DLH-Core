@@ -22,13 +22,13 @@ st.set_page_config(
 )
 styles.apply_theme()
 
-# Custom CSS for the Glowing Pill (Using a bulletproof anchor method)
+# Custom CSS for the Glowing Pill (Bulletproof Target)
 st.markdown("""
     <style>
-    /* Target the specific column that contains our hidden .glow-target class.
-       This bypasses Streamlit's brittle DOM numbering.
+    /* Target the 3rd column specifically inside the bordered header container.
+       This bypasses brittle DOM logic and ensures only this exact button glows.
     */
-    div[data-testid="column"]:has(.glow-target) button {
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(3) button {
         background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
         color: white !important;
         border: none !important;
@@ -36,10 +36,12 @@ st.markdown("""
         animation: pulse-purple 2s infinite !important;
         transition: all 0.3s ease !important;
     }
-    /* Ensure the text inside the Streamlit button is bold and white */
-    div[data-testid="column"]:has(.glow-target) button * {
+    
+    /* Force the text inside the button to be bold and white */
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(3) button * {
         color: white !important;
         font-weight: 800 !important;
+        letter-spacing: 0.5px !important;
     }
     
     @keyframes pulse-purple {
@@ -160,8 +162,6 @@ with st.container(border=True):
         st.markdown(f'<div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; width: 100%; text-align: center; margin:0;">{safe_status}</div>', unsafe_allow_html=True)
     
     with p_col3:
-        # Hidden anchor tag gives the CSS something exact to latch onto
-        st.markdown('<span class="glow-target"></span>', unsafe_allow_html=True)
         with st.popover("Smart Health Companion", use_container_width=True):
             st.markdown("Ask a question or log how you are feeling. The AI will correlate your input with your live telemetry.")
             st.caption("Tap the mic to log a voice note.")
