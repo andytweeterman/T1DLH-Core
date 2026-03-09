@@ -32,6 +32,8 @@ st.markdown("""
         font-weight: 700 !important;
         transition: all 0.3s ease !important;
         letter-spacing: 0.5px !important;
+        border: 1px solid rgba(128,128,128,0.2) !important;
+        background-color: var(--secondary-background-color) !important;
     }
     div[data-testid="stButton"] > button[kind="primary"] {
         background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
@@ -43,13 +45,14 @@ st.markdown("""
         transform: translateY(-2px);
     }
     div[data-testid="stButton"] > button[kind="secondary"] {
-        border: 1px solid var(--text-color) !important;
+        color: var(--text-color) !important;
         opacity: 0.8;
     }
     div[data-testid="stButton"] > button[kind="secondary"]:hover {
         opacity: 1.0;
         border-color: #8B5CF6 !important;
         color: #8B5CF6 !important;
+        background-color: rgba(139, 92, 246, 0.05) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -84,6 +87,8 @@ def render_adaptive_schedule_card(title, value):
 # 2. STATE & DATA LOADING
 # -----------------------------------------------------------------------------
 if "current_context" not in st.session_state: st.session_state.current_context = "Normal"
+if "ns_url" not in st.session_state: st.session_state.ns_url = ""
+if "ns_token" not in st.session_state: st.session_state.ns_token = ""
 if "whoop_token" not in st.session_state: st.session_state.whoop_token = whoop.get_valid_access_token()
 
 if "code" in st.query_params and not st.session_state.whoop_token:
@@ -96,18 +101,39 @@ if "code" in st.query_params and not st.session_state.whoop_token:
                 st.query_params.clear() 
                 st.rerun()
 
+@st.cache_data(ttl=300)
+def get_cached_health_data(url, token):
+    if url:
+        real_df = logic.fetch_nightscout_data(url, token)
+        if real_df is not None and not real_df.empty:
+            return real_df, True # True flags it as real data to avoid adding simulated chaos
+    return logic.fetch_health_data(), False
+
+@st.cache_data(ttl=60)
+def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False, owm_api_key="", is_real_data=False):
+    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode, owm_api_key, is_real_data)
+
 try:
     with st.spinner("Synchronizing biometric telemetry..."):
         whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token) if st.session_state.whoop_token else None
         meeting_count = st.session_state.get("local_meeting_count", calendar_sync.fetch_calendar_context()[0])
         speaker_mode = st.session_state.get("local_speaker_mode", calendar_sync.fetch_calendar_context()[1])
         
-        full_data, status, color_hex, raw_reason = logic.calc_glycemic_risk(
-            logic.fetch_health_data(), st.session_state.current_context, whoop_metrics, meeting_count, speaker_mode, st.secrets.get("OWM_API_KEY", "")
+        # Fetch Real or Simulated Data
+        raw_data, is_real_cgm = get_cached_health_data(st.session_state.ns_url, st.session_state.ns_token)
+        
+        full_data, status, color_hex, raw_reason = get_cached_glycemic_risk(
+            raw_data, 
+            st.session_state.current_context,
+            whoop_data=whoop_metrics,
+            meeting_count=meeting_count,
+            speaker_mode=speaker_mode,
+            owm_api_key=st.secrets.get("OWM_API_KEY", ""),
+            is_real_data=is_real_cgm
         )
         latest_bg = full_data.iloc[-1]
 except Exception as e:
-    st.error("Data loading failed. Please try again."); st.stop()
+    st.error(f"Data loading failed. Please check inputs and try again. {e}"); st.stop()
 
 # -----------------------------------------------------------------------------
 # 3. HEADER & POPOVER MODULARIZATION
@@ -161,7 +187,7 @@ with st.container(border=True):
             food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
             st.divider()
             with st.form("usda_search_form"):
-                db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa")
+                db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa", label_visibility="collapsed")
                 db_search_submit = st.form_submit_button("Lookup Exact Macros", use_container_width=True)
                 
     with hc4:
@@ -170,6 +196,27 @@ with st.container(border=True):
             if st.button("Apply Context", use_container_width=True): st.session_state.current_context = new_ctx; st.rerun()
             st.divider()
             
+            st.markdown("##### 🔌 Integrations")
+            
+            # --- NIGHTSCOUT SYNC UI ---
+            st.markdown("**🩸 Nightscout CGM Sync**")
+            if st.session_state.ns_url:
+                st.success("🟢 Connected")
+                if st.button("Disconnect", key="dc_ns"):
+                    st.session_state.ns_url = ""
+                    st.session_state.ns_token = ""
+                    st.rerun()
+            else:
+                with st.form("ns_form"):
+                    ns_url_input = st.text_input("Nightscout URL", placeholder="https://your-name.herokuapp.com")
+                    ns_token_input = st.text_input("API Token (Optional)", type="password", placeholder="token-123")
+                    if st.form_submit_button("Connect", use_container_width=True):
+                        st.session_state.ns_url = ns_url_input
+                        st.session_state.ns_token = ns_token_input
+                        st.rerun()
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
             st.markdown("**📱 Native Calendar (Mock)**")
             cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
             if cal_file:
@@ -177,6 +224,7 @@ with st.container(border=True):
                 st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
                 st.success(f"Local Sync: {mc} events loaded.")
             
+            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**⚡ Whoop Telemetry**")
             if not st.session_state.whoop_token:
                 oauth_state = secrets.token_urlsafe(16)
@@ -249,7 +297,7 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state: st.session_state.active_view = "Insights"
 v_cols = st.columns(4)
-for i, view in enumerate(["Insights", "Wellness", "Schedule", "Sleep"]):
+for i, view in enumerate(["Insights", "Total Life Metrics", "Schedule", "Sleep"]):
     with v_cols[i]: 
         if st.button(view, use_container_width=True, type="primary" if st.session_state.active_view == view else "secondary"): st.session_state.active_view = view; st.rerun()
 st.markdown("---")
@@ -265,11 +313,33 @@ if st.session_state.active_view == "Insights":
             st.success(f"**3. Recommended Action:** {html.escape(data.get('bullet_3', ''))}")
         except Exception as e: st.error(f"Failed: {e}")
 
-elif st.session_state.active_view == "Wellness":
+elif st.session_state.active_view == "Total Life Metrics":
+    st.markdown("#### 🧬 Metabolic Baseline")
     c_dex = st.columns(2)
     c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
     c_dex[1].metric("Trend", latest_bg['Trend'])
     
+    if st.session_state.whoop_token and whoop_metrics:
+        st.markdown("#### ⚡ Systemic Resilience")
+        cols_whoop = st.columns(5)
+        sc = whoop_metrics.get('score', {})
+        recovery_val = sc.get('recovery_score', 0)
+        hrv_val = int(sc.get('hrv_rmssd_milli_seconds', 0))
+        rhr_val = int(sc.get('resting_heart_rate_beats_per_minute', 0))
+        strain_val = round(sc.get('day_strain', 0.0), 1)
+        sleep_val = sc.get('sleep_performance_percentage', 0)
+        
+        rec_color = "normal" if recovery_val > 66 else "inverse" if recovery_val < 34 else "off"
+        sleep_color = "normal" if sleep_val > 85 else "inverse" if sleep_val < 70 else "off"
+        
+        cols_whoop[0].metric("Recovery", f"{recovery_val}%", delta=None, delta_color=rec_color)
+        cols_whoop[1].metric("Sleep Perf", f"{sleep_val}%", delta=None, delta_color=sleep_color)
+        cols_whoop[2].metric("Day Strain", f"{strain_val}")
+        cols_whoop[3].metric("HRV (ms)", hrv_val)
+        cols_whoop[4].metric("Resting HR", rhr_val, delta_color="inverse")
+    else:
+        st.info("🔗 Open the ☰ Menu above to connect Whoop and view live resilience metrics.")
+        
     tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
