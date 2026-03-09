@@ -1,145 +1,62 @@
 import streamlit as st
 
-def apply_theme():
-    custom_css = """
-    <style>
-        /* HIDE STREAMLIT UI */
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        .stDeployButton {display:none;}
-
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
-
-        :root {
-            /* Sleek Light Theme */
-            --bg-color: #F8F9FA;
-            --card-bg: #FFFFFF;
-            --text-primary: #111827;
-            --text-secondary: #6B7280;
-            
-            /* The Option 2 Logo Gradient */
-            --accent-start: #8A2BE2; /* Deep Purple */
-            --accent-end: #4169E1;   /* Royal Blue */
-            --accent-gradient: linear-gradient(135deg, var(--accent-start), var(--accent-end));
-            
-            --border: #E5E7EB;
-            --card-shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
-        }
-
-        @media (prefers-color-scheme: dark) {
-            :root {
-                /* Deep Dark Theme matching the logo's modern aesthetic */
-                --bg-color: #0F172A;
-                --card-bg: #1E293B;
-                --text-primary: #F8FAFC;
-                --text-secondary: #94A3B8;
-                
-                /* Brighter gradient for dark mode pop */
-                --accent-start: #A855F7; 
-                --accent-end: #3B82F6;
-                --accent-gradient: linear-gradient(135deg, var(--accent-start), var(--accent-end));
-                
-                --border: #334155;
-                --card-shadow: 0 10px 40px -10px rgba(0,0,0,0.4);
-            }
-        }
-
-        html, body, [class*="css"], .stApp {
-            font-family: 'Inter', sans-serif !important;
-            -webkit-font-smoothing: antialiased;
-            background-color: var(--bg-color) !important;
-            color: var(--text-primary) !important;
-        }
-
-        /* -----------------------
-           BUTTON CSS OVERRIDES
-           ----------------------- */
-        
-        /* 1. PRIMARY BUTTONS (Submit & Active Tabs) */
-        button[kind="primary"], div.stButton > button[kind="primary"] {
-            background: var(--accent-gradient) !important; /* APPLIED BRAND GRADIENT */
-            color: #FFFFFF !important;
-            border-radius: 20px !important;
-            border: none !important;
-            box-shadow: var(--card-shadow) !important;
-            font-weight: 800 !important;
-            transition: transform 0.2s ease, filter 0.2s ease !important;
-        }
-        
-        button[kind="primary"] *, div.stButton > button[kind="primary"] * {
-            color: #FFFFFF !important;
-        }
-
-        button[kind="primary"]:hover {
-            transform: scale(1.02);
-            filter: brightness(1.1);
-        }
-
-        /* 2. SECONDARY BUTTONS (Inactive Tabs) */
-        button[kind="secondary"] {
-            background-color: var(--card-bg) !important;
-            border: 1px solid rgba(128, 128, 128, 0.1) !important;
-            border-radius: 20px !important;
-            box-shadow: var(--card-shadow) !important;
-            color: var(--text-secondary) !important;
-            font-weight: 600 !important;
-            transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-        }
-        
-        button[kind="secondary"] * {
-            color: var(--text-secondary) !important;
-        }
-
-        button[kind="secondary"]:hover {
-            transform: scale(1.02);
-            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.1) !important; /* Subtle purple glow */
-        }
-        
-        /* METRIC CARDS */
-        [data-testid="stMetric"] {
-            background-color: var(--card-bg);
-            padding: 20px;
-            border-radius: 20px;
-            border: 1px solid rgba(128, 128, 128, 0.1);
-            box-shadow: var(--card-shadow);
-            transition: transform 0.2s ease;
-        }
-        [data-testid="stMetric"]:hover { transform: scale(1.02); }
-
-        [data-testid="stMetricValue"] {
-            color: var(--text-primary) !important;
-            font-weight: 800 !important;
-            font-size: 2rem !important;
-        }
-        [data-testid="stMetricLabel"] {
-            color: var(--text-secondary) !important;
-            font-weight: 600 !important;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            font-size: 0.8rem !important;
-        }
-
-        /* PILLS */
-        .gov-pill {
-            padding: 8px 24px;
-            border-radius: 30px;
-            font-weight: 800;
-            display: inline-block;
-            margin-top: 5px;
-            letter-spacing: 1px;
-            box-shadow: var(--card-shadow);
-            text-transform: uppercase;
-        }
-        
-        /* General Fixes */
-        .block-container { padding-top: 1.5rem !important; }
-    </style>
-    """
-    st.markdown(custom_css, unsafe_allow_html=True)
-
 FOOTER_HTML = """
-<div style="text-align: center; margin-top: 60px; padding-bottom: 24px; border-top: 1px solid rgba(128,128,128,0.2); color: var(--text-secondary); font-size: 13px; font-family: 'Inter', sans-serif; letter-spacing: 1.5px;">
-    TOTAL LIFE DOWNLOAD HUB • AGENTIC RISK MANAGEMENT
+<div style='text-align: center; color: var(--text-secondary); margin-top: 50px; font-size: 12px; opacity: 0.7;'>
+    TLDH Core Architecture | Agentic Risk Engine
 </div>
 """
+
+def apply_theme():
+    """Placeholder for overarching Streamlit theme configs."""
+    pass
+
+def inject_custom_css():
+    """Injects all complex CSS animations and pill styles."""
+    st.markdown("""
+        <style>
+        /* Glowing Popover Button (2nd Column) */
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(2) button {
+            background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
+            color: white !important; border: none !important; border-radius: 50px !important;
+            animation: pulse-purple 2s infinite !important; transition: all 0.3s ease !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(2) button * {
+            color: white !important; font-weight: 800 !important; letter-spacing: 0.5px !important;
+        }
+        @keyframes pulse-purple {
+            0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(139, 92, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+        }
+        
+        /* Total Life Driver Pills */
+        .driver-pill {
+            display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 24px;
+            font-size: 0.8rem; font-weight: 800; margin-right: 10px; margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); letter-spacing: 0.3px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease; cursor: default;
+        }
+        .driver-pill:hover {
+            transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0,0,0,0.15);
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+def get_driver_pill_html(t):
+    """Parses a driver string and returns the styled HTML pill."""
+    if "🔴" in t or "🔥" in t or "❄️" in t:
+        bg, text, border = "#FFD1D9", "#8A001A", "#FFB3C1" 
+    elif "🟡" in t or "⚡" in t or "💤" in t:
+        bg, text, border = "#FFEDB3", "#805500", "#FFDF80"
+    elif "🟢" in t or "☁️" in t:
+        bg, text, border = "#D1F4D9", "#00591A", "#A3E9B3"
+    else:
+        bg, text, border = "#E1D4FA", "#330099", "#C4B5F5"
+    
+    friendly_text = t.replace("BENIGN ENVIRONMENT", "CLEAR WEATHER").replace("LOAD", "CALENDAR LOAD").title().replace("12H", "12h")
+    return f"<div class='driver-pill' style='background-color:{bg}; color:{text}; border:1px solid {border};'>{friendly_text}</div>"
+
+def render_schedule_card(title, value):
+    """Returns the HTML for a high-contrast Schedule metric card."""
+    card_css = "background-color: #1A1A1A; padding: 20px; border-radius: 20px; border: 1px solid #333333; box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-align: center;"
+    return f"<div style='{card_css}'><div style='color:#AAAAAA;font-size:0.8rem;'>{title}</div><div style='font-weight:800; color:white;'>{value}</div></div>"
