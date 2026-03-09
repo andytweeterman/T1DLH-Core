@@ -11,16 +11,48 @@ import hashlib
 import base64
 import requests
 import re
+import pandas as pd
 from datetime import datetime
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
 
 # -----------------------------------------------------------------------------
-# 1. SETUP & CLAUDE WRAPPER (CODE DIET)
+# 1. SETUP & CLAUDE WRAPPER 
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="TLDH | Hub", page_icon="🧬", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_sidebar_state="collapsed")
 styles.apply_theme()
 styles.inject_custom_css()
+
+# Inject Global Button Styles (Pill formatting & Gradients)
+st.markdown("""
+    <style>
+    /* Universal Pill Buttons for Navigation and Forms */
+    div[data-testid="stButton"] > button {
+        border-radius: 50px !important;
+        font-weight: 700 !important;
+        transition: all 0.3s ease !important;
+        letter-spacing: 0.5px !important;
+    }
+    div[data-testid="stButton"] > button[kind="primary"] {
+        background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
+        color: white !important;
+        border: none !important;
+    }
+    div[data-testid="stButton"] > button[kind="primary"]:hover {
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4) !important;
+        transform: translateY(-2px);
+    }
+    div[data-testid="stButton"] > button[kind="secondary"] {
+        border: 1px solid var(--text-color) !important;
+        opacity: 0.8;
+    }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover {
+        opacity: 1.0;
+        border-color: #8B5CF6 !important;
+        color: #8B5CF6 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
@@ -42,6 +74,11 @@ def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=Tru
 def get_ai_chart_summary(chart_type, time_window, metrics):
     sys_prompt = f"You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend."}], max_tokens=150, parse_json=False)
+
+def render_adaptive_schedule_card(title, value):
+    """Returns adaptive HTML for schedule cards that matches the active theme."""
+    card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 20px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
+    return f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.85rem;font-weight:700;text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
 
 # -----------------------------------------------------------------------------
 # 2. STATE & DATA LOADING
@@ -76,9 +113,12 @@ except Exception as e:
 # 3. HEADER & POPOVER MODULARIZATION
 # -----------------------------------------------------------------------------
 st.markdown(f"""
-    <div style="margin-top: 5px; margin-bottom: 20px;">
-        <span style="font-size: 34px; font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px;">Total Life Download Hub</span><br>
-        <span style="color: var(--text-secondary); font-weight: 600; font-size: 1.05rem;">Agentic Risk Management Engine</span>
+    <div style="margin-top: 10px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
+        <span style="font-size: 46px;">🧠</span>
+        <div>
+            <div style="font-size: 32px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">Total Life Download Hub</div>
+            <div style="color: var(--text-secondary); font-weight: 600; font-size: 1.1rem; margin-top: -3px;">Agentic Risk Management Engine</div>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -239,14 +279,17 @@ elif st.session_state.active_view == "Wellness":
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     
     with st.spinner("Synthesizing Trend..."):
-        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, int(p_df['Glucose_Value'].mean()), int(p_df['Glucose_Value'].min()), int(p_df['Glucose_Value'].max()), int(p_df['Glucose_Value'].std()), int(p_df['Glucose_Value'].iloc[-1]))}")
+        std_val = p_df['Glucose_Value'].std()
+        safe_std = int(std_val) if pd.notna(std_val) else 0
+        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
+        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str)}")
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
-    with h1: st.markdown(styles.render_schedule_card("1 HOUR", '✈️ SHIFTING' if st.session_state.current_context == 'Travel' else '🟢 SAFE'), unsafe_allow_html=True)
-    with h2: st.markdown(styles.render_schedule_card("4 HOURS", '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'), unsafe_allow_html=True)
-    with h3: st.markdown(styles.render_schedule_card("24 HOURS", '🟢 GOOD'), unsafe_allow_html=True)
-    with h4: st.markdown(styles.render_schedule_card("MEETINGS", f"{meeting_count} ({'🔴 CRITICAL' if meeting_count>=7 else '🟡 ELEVATED' if meeting_count>=4 else '🟢 LIGHT'})"), unsafe_allow_html=True)
+    with h1: st.markdown(render_adaptive_schedule_card("1 HOUR", '✈️ SHIFTING' if st.session_state.current_context == 'Travel' else '🟢 SAFE'), unsafe_allow_html=True)
+    with h2: st.markdown(render_adaptive_schedule_card("4 HOURS", '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'), unsafe_allow_html=True)
+    with h3: st.markdown(render_adaptive_schedule_card("24 HOURS", '🟢 GOOD'), unsafe_allow_html=True)
+    with h4: st.markdown(render_adaptive_schedule_card("MEETINGS", f"{meeting_count} ({'🔴 CRITICAL' if meeting_count>=7 else '🟡 ELEVATED' if meeting_count>=4 else '🟢 LIGHT'})"), unsafe_allow_html=True)
     st.info(f"**Agentic Insight:** The Risk Engine is factoring in **{meeting_count} meetings** to adjust glycemic sensitivity.")
 
 elif st.session_state.active_view == "Sleep":
@@ -260,13 +303,17 @@ elif st.session_state.active_view == "Sleep":
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
         o_df = full_data.tail({"4h": 48, "8h": 96, "12h": 144}[tw])
         
+        st.markdown("##### 🩸 Overnight Blood Sugar")
         fig = go.Figure(go.Scatter(x=o_df['Timestamp'], y=o_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
         fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
         fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         with st.spinner("Synthesizing..."):
-            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Overnight Glucose', tw, int(o_df['Glucose_Value'].mean()), int(o_df['Glucose_Value'].min()), int(o_df['Glucose_Value'].max()), int(o_df['Glucose_Value'].std()), int(o_df['Glucose_Value'].iloc[-1]))}")
+            std_val = o_df['Glucose_Value'].std()
+            safe_std = int(std_val) if pd.notna(std_val) else 0
+            metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
+            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {sc.get("sleep_performance_percentage", 85)}% Sleep)', tw, metrics_str)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
