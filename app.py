@@ -10,6 +10,7 @@ import whoop
 import hashlib
 import base64
 import requests
+import re
 from datetime import datetime
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
@@ -24,10 +25,11 @@ st.set_page_config(
 )
 styles.apply_theme()
 
-# Custom CSS for the Glowing Pill (Bulletproof Target)
+# Custom CSS for the Glowing Pill
 st.markdown("""
     <style>
-    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(3) button {
+    /* Target the 2nd column specifically inside the bordered header container */
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(2) button {
         background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
         color: white !important;
         border: none !important;
@@ -35,7 +37,7 @@ st.markdown("""
         animation: pulse-purple 2s infinite !important;
         transition: all 0.3s ease !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(3) button * {
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(2) button * {
         color: white !important;
         font-weight: 800 !important;
         letter-spacing: 0.5px !important;
@@ -58,6 +60,34 @@ try:
 except Exception as e:
     st.error(f"⚠️ API Critical Failure. Details: {e}")
     st.stop()
+
+# -----------------------------------------------------------------------------
+# 2.5 AI SYNTHESIS HELPERS
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=300)
+def get_ai_chart_summary(chart_type, time_window, avg_val, min_val, max_val, std_val, latest_val):
+    """Caches and generates an agentic summary of visual chart data."""
+    system_instruction = f"""
+    You are my elite personal performance coach. Analyze my {chart_type} summary data over the last {time_window}.
+    Metrics:
+    - Average Glucose: {avg_val} mg/dL
+    - Min Glucose: {min_val} mg/dL
+    - Max Glucose: {max_val} mg/dL
+    - Volatility (Std Dev): {std_val} mg/dL
+    - Latest Reading: {latest_val} mg/dL
+    
+    Provide a 2-sentence highly actionable synthesis of what this means for my performance and metabolic load. Speak directly to me using "you" and "your". Tone should be warm, personal, and sharp. NEVER refer to me as "the patient" or "the user". Do not use markdown formatting outside of bolding.
+    """
+    try:
+        response = client.messages.create(
+            model=active_model_name,
+            max_tokens=150,
+            system=system_instruction,
+            messages=[{"role": "user", "content": "Synthesize this trend."}]
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        return "AI Analysis temporarily unavailable."
 
 # -----------------------------------------------------------------------------
 # 3. CONTEXT STATE & AUTH LOGIC
@@ -128,7 +158,6 @@ except Exception as e:
 # -----------------------------------------------------------------------------
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason)) 
-safe_color_hex = html.escape(str(color_hex))
 
 st.markdown(f"""
     <div style="margin-top: 5px; margin-bottom: 20px;">
@@ -138,15 +167,26 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    p_col1, p_col2, p_col3, p_col4, p_col5 = st.columns([1, 2.5, 2.5, 2.5, 1.5])
+    # Adjusted column layout to 4 columns to remove the abstract "Status" pill
+    hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
     
-    with p_col1:
-        st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; margin-top: 10px;'>Status</p>", unsafe_allow_html=True)
+    with hc1:
+        st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 8px;'>Active Load Vectors</p>", unsafe_allow_html=True)
+        
+        # Cleanly parse the reason string into individual vector tags
+        parts = safe_reason.split("|")
+        vectors = []
+        for part in parts:
+            clean_part = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', part)
+            clean_part = clean_part.replace('()', '').replace('(', '').replace(')', '').strip()
+            if clean_part:
+                vectors.append(html.escape(clean_part))
+        
+        # Build HTML for the mini-indicators
+        tags_html = "".join([f"<div style='display:inline-block; background-color:#1A1A1A; color:#E0E0E0; padding:6px 12px; border-radius:6px; font-size:0.75rem; font-weight:700; margin-right:8px; margin-bottom:8px; border:1px solid #333; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{t}</div>" for t in vectors[:3]])
+        st.markdown(tags_html, unsafe_allow_html=True)
     
-    with p_col2:
-        st.markdown(f'<div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; width: 100%; text-align: center; margin:0;">{safe_status}</div>', unsafe_allow_html=True)
-    
-    with p_col3:
+    with hc2:
         with st.popover("Smart Health Companion", use_container_width=True):
             st.markdown("Ask a question or log how you are feeling. The AI will correlate your input with your live telemetry.")
             st.caption("Tap the mic to log a voice note.")
@@ -157,7 +197,7 @@ with st.container(border=True):
                 icon_size="2x"
             )
             
-    with p_col4:
+    with hc3:
         with st.popover("🍽️ Smart Meals", use_container_width=True):
             st.markdown("Snap a photo to estimate carbohydrates and metabolic impact.")
             food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
@@ -169,7 +209,7 @@ with st.container(border=True):
                 db_search_query = st.text_input("Search Food:", placeholder="E.g., 1 cup cooked quinoa")
                 db_search_submit = st.form_submit_button("Lookup Macros", use_container_width=True)
                 
-    with p_col5:
+    with hc4:
         with st.popover("☰ MENU", use_container_width=True):
             st.markdown("##### 📍 Context")
             new_ctx = st.radio(
@@ -236,12 +276,6 @@ with st.container(border=True):
                 )
             except Exception:
                 st.warning("Awaiting full data sync...")
-    
-    st.markdown(f"""
-        <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); font-style: italic; border-left: 3px solid var(--accent-start); padding-left: 10px;">
-            Analysis: {safe_reason}
-        </div>
-    """, unsafe_allow_html=True)
 
 st.divider()
 
@@ -320,7 +354,6 @@ if 'food_image' in locals() and food_image is not None:
 if 'db_search_submit' in locals() and db_search_submit and db_search_query:
     with st.spinner(f"Querying USDA FoodData Central for '{db_search_query}'..."):
         try:
-            # USDA provides a free DEMO_KEY for low-volume testing!
             usda_key = st.secrets.get("USDA_API_KEY", "DEMO_KEY")
             url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={db_search_query}&api_key={usda_key}&pageSize=1"
             
@@ -333,12 +366,10 @@ if 'db_search_submit' in locals() and db_search_submit and db_search_query:
                 food_name = food.get("description", "Unknown Food")
                 nutrients = food.get("foodNutrients", [])
                 
-                # Extract exact macros
                 carbs = next((n["value"] for n in nutrients if n["nutrientName"] == "Carbohydrate, by difference"), 0.0)
                 protein = next((n["value"] for n in nutrients if n["nutrientName"] == "Protein"), 0.0)
                 fat = next((n["value"] for n in nutrients if n["nutrientName"] == "Total lipid (fat)"), 0.0)
                 
-                # Handoff to Claude for clinical synthesis
                 system_instruction = f"""
                 You are my elite personal clinical nutritionist managing my Type 1 Diabetes.
                 I am querying the USDA database for: {food_name}. 
@@ -518,6 +549,16 @@ elif st.session_state.active_view == "Wellness":
     
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    
+    with st.spinner("Synthesizing Trend..."):
+        avg_g = int(plot_data['Glucose_Value'].mean())
+        min_g = int(plot_data['Glucose_Value'].min())
+        max_g = int(plot_data['Glucose_Value'].max())
+        std_g = int(plot_data['Glucose_Value'].std())
+        lat_g = int(plot_data['Glucose_Value'].iloc[-1])
+        
+        summary = get_ai_chart_summary("Glucose/CGM", time_window, avg_g, min_g, max_g, std_g, lat_g)
+        st.success(f"**🤖 Agentic Synthesis:** {summary}")
 
 # --- VIEW B: SCHEDULE ---
 elif st.session_state.active_view == "Schedule":
@@ -622,7 +663,11 @@ elif st.session_state.active_view == "Sleep":
     st.markdown("### 🌙 Sleep & Recovery Correlation")
     if st.session_state.whoop_token and whoop_metrics:
         sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 85)
-        overnight_df = full_data.tail(96)
+        
+        s_time_window = st.radio("Overnight Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
+        s_row_mapping = {"4h": 48, "8h": 96, "12h": 144}
+        overnight_df = full_data.tail(s_row_mapping[s_time_window])
+        
         std_dev = int(overnight_df['Glucose_Value'].std())
         
         s_col1, s_col2 = st.columns(2)
@@ -632,11 +677,22 @@ elif st.session_state.active_view == "Sleep":
         
         sleep_fig = go.Figure()
         sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
-        sleep_fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'))
-        st.plotly_chart(sleep_fig, use_container_width=True)
+        sleep_fig.update_layout(
+            height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
+            xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True),
+            margin=dict(l=0, r=0, t=30, b=0)
+        )
+        st.plotly_chart(sleep_fig, use_container_width=True, config={'displayModeBar': False})
         
-        if std_dev > 20 and sleep_perf < 70: st.warning("⚠️ **Agentic Insight:** High volatility detected. Consider a +20% basal temporary increase.")
-        else: st.success("✅ **Agentic Insight:** Stable overnight metabolic state.")
+        with st.spinner("Synthesizing Overnight Trend..."):
+            avg_g = int(overnight_df['Glucose_Value'].mean())
+            min_g = int(overnight_df['Glucose_Value'].min())
+            max_g = int(overnight_df['Glucose_Value'].max())
+            std_g = int(overnight_df['Glucose_Value'].std())
+            lat_g = int(overnight_df['Glucose_Value'].iloc[-1])
+            
+            summary = get_ai_chart_summary(f"Overnight Glucose (with {sleep_perf}% Sleep Performance)", s_time_window, avg_g, min_g, max_g, std_g, lat_g)
+            st.success(f"**🤖 Agentic Synthesis:** {summary}")
     else:
         st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
 
