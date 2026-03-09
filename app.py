@@ -26,34 +26,11 @@ styles.inject_custom_css()
 # Inject Global Button Styles (Pill formatting & Gradients)
 st.markdown("""
     <style>
-    /* Universal Pill Buttons for Navigation and Forms */
-    div[data-testid="stButton"] > button {
-        border-radius: 50px !important;
-        font-weight: 700 !important;
-        transition: all 0.3s ease !important;
-        letter-spacing: 0.5px !important;
-        border: 1px solid rgba(128,128,128,0.2) !important;
-        background-color: var(--secondary-background-color) !important;
-    }
-    div[data-testid="stButton"] > button[kind="primary"] {
-        background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
-        color: white !important;
-        border: none !important;
-    }
-    div[data-testid="stButton"] > button[kind="primary"]:hover {
-        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4) !important;
-        transform: translateY(-2px);
-    }
-    div[data-testid="stButton"] > button[kind="secondary"] {
-        color: var(--text-color) !important;
-        opacity: 0.8;
-    }
-    div[data-testid="stButton"] > button[kind="secondary"]:hover {
-        opacity: 1.0;
-        border-color: #8B5CF6 !important;
-        color: #8B5CF6 !important;
-        background-color: rgba(139, 92, 246, 0.05) !important;
-    }
+    div[data-testid="stButton"] > button { border-radius: 50px !important; font-weight: 700 !important; transition: all 0.3s ease !important; letter-spacing: 0.5px !important; }
+    div[data-testid="stButton"] > button[kind="primary"] { background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; color: white !important; border: none !important; }
+    div[data-testid="stButton"] > button[kind="primary"]:hover { box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4) !important; transform: translateY(-2px); }
+    div[data-testid="stButton"] > button[kind="secondary"] { border: 1px solid var(--text-color) !important; opacity: 0.8; }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover { opacity: 1.0; border-color: #8B5CF6 !important; color: #8B5CF6 !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -61,16 +38,24 @@ try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     ACTIVE_MODEL = 'claude-sonnet-4-6' 
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
-    st.stop()
+    st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
 
 def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=True):
-    """Universal wrapper to shrink all Anthropic API calls and JSON parsing."""
+    """Universal wrapper with robust Regex JSON extraction to prevent LLM formatting crashes."""
     res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=system_instruction, messages=user_messages)
     text = res.content[0].text.strip()
+    
     if parse_json:
-        text = text.replace("```json", "").replace("```", "").strip()
-        return json.loads(text)
+        # Actively hunt for the JSON block, ignoring any conversational filler
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except Exception as e:
+                raise ValueError(f"JSON Decode Error: {e}. Claude sent: {text}")
+        else:
+            # Fallback string cleaner
+            return json.loads(text.replace("```json", "").replace("```", "").strip())
     return text
 
 @st.cache_data(ttl=300)
@@ -78,8 +63,16 @@ def get_ai_chart_summary(chart_type, time_window, metrics):
     sys_prompt = f"You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend."}], max_tokens=150, parse_json=False)
 
+def parse_whoop_data(metrics):
+    """Robustly extracts nested Whoop schema into 5 clean variables."""
+    if not metrics: return 0, 0, 0, 0, 0.0
+    if 'recovery' in metrics or 'sleep' in metrics:
+        rec, slp, day = metrics.get('recovery', {}).get('score', {}), metrics.get('sleep', {}).get('score', {}), metrics.get('score', {})
+        return rec.get('recovery_score', 0), int(rec.get('hrv_rmssd_milli', 0)), int(rec.get('resting_heart_rate', 0)), slp.get('sleep_performance_percentage', 0), round(day.get('strain', 0.0), 1)
+    s = metrics.get('score', metrics)
+    return s.get('recovery_score', 0), int(s.get('hrv_rmssd_milli', 0)), int(s.get('resting_heart_rate', 0)), s.get('sleep_performance_percentage', 0), round(s.get('strain', 0.0), 1)
+
 def render_adaptive_schedule_card(title, value):
-    """Returns adaptive HTML for schedule cards that matches the active theme."""
     card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 20px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
     return f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.85rem;font-weight:700;text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
 
@@ -97,16 +90,13 @@ if "code" in st.query_params and not st.session_state.whoop_token:
             token_data = whoop.get_access_token(st.query_params["code"])
             if token_data and "access_token" in token_data:
                 st.session_state.whoop_token = token_data["access_token"]
-                whoop.save_tokens(token_data) 
-                st.query_params.clear() 
-                st.rerun()
+                whoop.save_tokens(token_data); st.query_params.clear(); st.rerun()
 
 @st.cache_data(ttl=300)
 def get_cached_health_data(url, token):
     if url:
         real_df = logic.fetch_nightscout_data(url, token)
-        if real_df is not None and not real_df.empty:
-            return real_df, True # True flags it as real data to avoid adding simulated chaos
+        if real_df is not None and not real_df.empty: return real_df, True
     return logic.fetch_health_data(), False
 
 @st.cache_data(ttl=60)
@@ -119,21 +109,12 @@ try:
         meeting_count = st.session_state.get("local_meeting_count", calendar_sync.fetch_calendar_context()[0])
         speaker_mode = st.session_state.get("local_speaker_mode", calendar_sync.fetch_calendar_context()[1])
         
-        # Fetch Real or Simulated Data
+        w_rec, w_hrv, w_rhr, w_sleep, w_strain = parse_whoop_data(whoop_metrics)
         raw_data, is_real_cgm = get_cached_health_data(st.session_state.ns_url, st.session_state.ns_token)
-        
-        full_data, status, color_hex, raw_reason = get_cached_glycemic_risk(
-            raw_data, 
-            st.session_state.current_context,
-            whoop_data=whoop_metrics,
-            meeting_count=meeting_count,
-            speaker_mode=speaker_mode,
-            owm_api_key=st.secrets.get("OWM_API_KEY", ""),
-            is_real_data=is_real_cgm
-        )
+        full_data, status, color_hex, raw_reason = get_cached_glycemic_risk(raw_data, st.session_state.current_context, whoop_metrics, meeting_count, speaker_mode, st.secrets.get("OWM_API_KEY", ""), is_real_cgm)
         latest_bg = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"Data loading failed. Please check inputs and try again. {e}"); st.stop()
+    st.error(f"Data loading failed: {e}"); st.stop()
 
 # -----------------------------------------------------------------------------
 # 3. HEADER & POPOVER MODULARIZATION
@@ -155,7 +136,6 @@ with st.container(border=True):
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
         vectors = []
         
-        # TIR Vector
         tir_df = full_data.tail(144)
         if len(tir_df) > 0:
             low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
@@ -164,7 +144,6 @@ with st.container(border=True):
             elif elev > 25: vectors.append(f"🟡 {int(elev)}% Elevated (12h)")
             else: vectors.append(f"🟢 {int(tgt)}% On Target (12h)")
 
-        # External Vectors
         for p in raw_reason.split("|"):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
@@ -187,7 +166,7 @@ with st.container(border=True):
             food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
             st.divider()
             with st.form("usda_search_form"):
-                db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa", label_visibility="collapsed")
+                db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa")
                 db_search_submit = st.form_submit_button("Lookup Exact Macros", use_container_width=True)
                 
     with hc4:
@@ -197,26 +176,19 @@ with st.container(border=True):
             st.divider()
             
             st.markdown("##### 🔌 Integrations")
-            
-            # --- NIGHTSCOUT SYNC UI ---
             st.markdown("**🩸 Nightscout CGM Sync**")
             if st.session_state.ns_url:
                 st.success("🟢 Connected")
                 if st.button("Disconnect", key="dc_ns"):
-                    st.session_state.ns_url = ""
-                    st.session_state.ns_token = ""
-                    st.rerun()
+                    st.session_state.ns_url = ""; st.session_state.ns_token = ""; st.rerun()
             else:
                 with st.form("ns_form"):
                     ns_url_input = st.text_input("Nightscout URL", placeholder="https://your-name.herokuapp.com")
                     ns_token_input = st.text_input("API Token (Optional)", type="password", placeholder="token-123")
                     if st.form_submit_button("Connect", use_container_width=True):
-                        st.session_state.ns_url = ns_url_input
-                        st.session_state.ns_token = ns_token_input
-                        st.rerun()
+                        st.session_state.ns_url = ns_url_input; st.session_state.ns_token = ns_token_input; st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
-            
             st.markdown("**📱 Native Calendar (Mock)**")
             cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
             if cal_file:
@@ -232,6 +204,19 @@ with st.container(border=True):
                 st.link_button("🔗 Connect Whoop", whoop.get_authorization_url(oauth_state), use_container_width=True)
             else:
                 if st.button("✅ Whoop Synced", use_container_width=True): st.rerun() 
+            
+            st.divider()
+            st.markdown("##### 🖨️ Clinical Export")
+            try:
+                clinical_snapshot = {
+                    "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "active_context": st.session_state.current_context,
+                    "schedule_load": {"meetings_next_8h": meeting_count, "weekend_window_active": logic.is_weekend_window()},
+                    "metabolic_telemetry_24h": {"current_glucose_mgdl": int(latest_bg['Glucose_Value']), "trend_velocity": latest_bg['Trend'], "average_glucose_mgdl": int(full_data['Glucose_Value'].mean())},
+                    "systemic_resilience": {"whoop_recovery_pct": w_rec, "whoop_sleep_perf_pct": w_sleep, "whoop_day_strain": w_strain}
+                }
+                st.download_button(label="📥 Download JSON", data=json.dumps(clinical_snapshot, indent=4), file_name=f"TLDH_Clinical_Snapshot_{datetime.now().strftime('%Y%m%d')}.json", mime="application/json", use_container_width=True)
+            except Exception: st.warning("Awaiting sync...")
 
 st.divider()
 
@@ -242,7 +227,7 @@ if 'text_submit' in locals() and text_submit and text_input:
     with st.spinner("Correlating subjective report with objective telemetry..."):
         try:
             ctx = {"context": st.session_state.current_context, "meetings": meeting_count, "glucose": int(latest_bg['Glucose_Value']), "trend": latest_bg['Trend']}
-            sys = f"You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. Correlate my text. Speak to me as 'you'. Return JSON: 'reply', 'summary', 'scores':{{'bio_strain', 'cog_load'}}, 'impact_prediction'."
+            sys = f"You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. Correlate my text. Speak to me as 'you'. Return ONLY valid JSON with keys: 'reply' (string), 'summary' (string), 'scores' (dict with 'bio_strain' and 'cog_load' integers), 'impact_prediction' (string)."
             parsed = ask_claude(sys, [{"role": "user", "content": text_input}])
             st.session_state.journal_history = [parsed]
         except Exception as e: st.error(f"Failed: {e}")
@@ -254,7 +239,7 @@ if 'food_image' in locals() and food_image is not None:
         with st.spinner("Analyzing meal nutrition..."):
             try:
                 b64 = base64.b64encode(food_image.getvalue()).decode("utf-8")
-                sys = "You are my elite clinical nutritionist. Speak as 'you'. Return JSON: 'food_identified', 'estimated_carbs_g', 'glycemic_index', 'analysis'."
+                sys = "You are my elite clinical nutritionist. Speak as 'you'. Return ONLY a valid JSON object with EXACTLY these keys: 'food_identified' (string), 'estimated_carbs_g' (integer), 'glycemic_index' (string), 'analysis' (string)."
                 meal_data = ask_claude(sys, [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}, {"type": "text", "text": "Analyze this meal for T1D."}]}])
                 meal_data["source"] = "📸 Vision Estimate"; st.session_state.latest_meal_analysis = meal_data
             except Exception as e: st.error(f"Failed: {e}")
@@ -266,7 +251,7 @@ if 'db_search_submit' in locals() and db_search_submit and db_search_query:
             if res.get("foods"):
                 nutrients = res["foods"][0].get("foodNutrients", [])
                 c, p, f = [next((n["value"] for n in nutrients if n["nutrientName"] == x), 0.0) for x in ["Carbohydrate, by difference", "Protein", "Total lipid (fat)"]]
-                sys = f"You are my clinical nutritionist. I am querying {res['foods'][0].get('description')}. Macros per 100g: Carbs {c}g, Protein {p}g, Fat {f}g. Return JSON: 'food_identified', 'estimated_carbs_g', 'glycemic_index', 'analysis'."
+                sys = f"You are my clinical nutritionist. I am querying {res['foods'][0].get('description')}. Macros per 100g: Carbs {c}g, Protein {p}g, Fat {f}g. Return ONLY a valid JSON object with EXACTLY these keys: 'food_identified' (string), 'estimated_carbs_g' (integer), 'glycemic_index' (string), 'analysis' (string)."
                 meal_data = ask_claude(sys, [{"role": "user", "content": "Analyze macros."}])
                 meal_data["source"] = "🔍 USDA Verified (per 100g)"; st.session_state.latest_meal_analysis = meal_data
             else: st.warning("No matches found.")
@@ -297,7 +282,7 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state: st.session_state.active_view = "Insights"
 v_cols = st.columns(4)
-for i, view in enumerate(["Insights", "Total Life Metrics", "Schedule", "Sleep"]):
+for i, view in enumerate(["Insights", "Wellness", "Schedule", "Sleep"]):
     with v_cols[i]: 
         if st.button(view, use_container_width=True, type="primary" if st.session_state.active_view == view else "secondary"): st.session_state.active_view = view; st.rerun()
 st.markdown("---")
@@ -306,40 +291,18 @@ if st.session_state.active_view == "Insights":
     st.markdown("### 📋 Tactical Synthesis")
     with st.spinner("Compiling Insights..."):
         try:
-            sys = f"You are my elite personal performance coach. Metrics: {st.session_state.current_context} Context, {meeting_count} meetings, BG {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). Write insights. Speak directly to me using 'you'. Return JSON keys: 'bullet_1', 'bullet_2', 'bullet_3'."
+            sys = f"You are my elite personal performance coach. Metrics: {st.session_state.current_context} Context, {meeting_count} meetings, Whoop Recovery: {w_rec}%, BG {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). Write insights. Speak directly to me using 'you'. Return ONLY a valid JSON object with keys: 'bullet_1', 'bullet_2', 'bullet_3'."
             data = ask_claude(sys, [{"role": "user", "content": "Generate my insights now."}])
             st.info(f"**1. Load & Resilience:** {html.escape(data.get('bullet_1', ''))}")
             st.warning(f"**2. Metabolic State:** {html.escape(data.get('bullet_2', ''))}")
             st.success(f"**3. Recommended Action:** {html.escape(data.get('bullet_3', ''))}")
         except Exception as e: st.error(f"Failed: {e}")
 
-elif st.session_state.active_view == "Total Life Metrics":
-    st.markdown("#### 🧬 Metabolic Baseline")
+elif st.session_state.active_view == "Wellness":
     c_dex = st.columns(2)
     c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
     c_dex[1].metric("Trend", latest_bg['Trend'])
     
-    if st.session_state.whoop_token and whoop_metrics:
-        st.markdown("#### ⚡ Systemic Resilience")
-        cols_whoop = st.columns(5)
-        sc = whoop_metrics.get('score', {})
-        recovery_val = sc.get('recovery_score', 0)
-        hrv_val = int(sc.get('hrv_rmssd_milli_seconds', 0))
-        rhr_val = int(sc.get('resting_heart_rate_beats_per_minute', 0))
-        strain_val = round(sc.get('day_strain', 0.0), 1)
-        sleep_val = sc.get('sleep_performance_percentage', 0)
-        
-        rec_color = "normal" if recovery_val > 66 else "inverse" if recovery_val < 34 else "off"
-        sleep_color = "normal" if sleep_val > 85 else "inverse" if sleep_val < 70 else "off"
-        
-        cols_whoop[0].metric("Recovery", f"{recovery_val}%", delta=None, delta_color=rec_color)
-        cols_whoop[1].metric("Sleep Perf", f"{sleep_val}%", delta=None, delta_color=sleep_color)
-        cols_whoop[2].metric("Day Strain", f"{strain_val}")
-        cols_whoop[3].metric("HRV (ms)", hrv_val)
-        cols_whoop[4].metric("Resting HR", rhr_val, delta_color="inverse")
-    else:
-        st.info("🔗 Open the ☰ Menu above to connect Whoop and view live resilience metrics.")
-        
     tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
@@ -349,9 +312,7 @@ elif st.session_state.active_view == "Total Life Metrics":
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     
     with st.spinner("Synthesizing Trend..."):
-        std_val = p_df['Glucose_Value'].std()
-        safe_std = int(std_val) if pd.notna(std_val) else 0
-        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
+        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {int(p_df['Glucose_Value'].std() if pd.notna(p_df['Glucose_Value'].std()) else 0)}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
         st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str)}")
 
 elif st.session_state.active_view == "Schedule":
@@ -364,11 +325,10 @@ elif st.session_state.active_view == "Schedule":
 
 elif st.session_state.active_view == "Sleep":
     if st.session_state.whoop_token and whoop_metrics:
-        sc = whoop_metrics.get('score', {})
         st.markdown("##### 💤 Whoop Metrics")
         s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Sleep Perf", f"{sc.get('sleep_performance_percentage', 85)}%"); s2.metric("Recovery", f"{sc.get('recovery_score', 0)}%")
-        s3.metric("HRV", f"{int(sc.get('hrv_rmssd_milli_seconds', 0))} ms"); s4.metric("Resting HR", f"{int(sc.get('resting_heart_rate_beats_per_minute', 0))} bpm")
+        s1.metric("Sleep Perf", f"{w_sleep}%"); s2.metric("Recovery", f"{w_rec}%")
+        s3.metric("HRV", f"{w_hrv} ms"); s4.metric("Resting HR", f"{w_rhr} bpm")
         
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
         o_df = full_data.tail({"4h": 48, "8h": 96, "12h": 144}[tw])
@@ -380,10 +340,8 @@ elif st.session_state.active_view == "Sleep":
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         with st.spinner("Synthesizing..."):
-            std_val = o_df['Glucose_Value'].std()
-            safe_std = int(std_val) if pd.notna(std_val) else 0
-            metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
-            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {sc.get("sleep_performance_percentage", 85)}% Sleep)', tw, metrics_str)}")
+            metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {int(o_df['Glucose_Value'].std() if pd.notna(o_df['Glucose_Value'].std()) else 0)}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
+            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep & {w_rec}% Recovery)', tw, metrics_str)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
