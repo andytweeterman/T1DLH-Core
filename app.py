@@ -22,6 +22,26 @@ st.set_page_config(
 )
 styles.apply_theme()
 
+# Custom CSS for the Glowing Voice Dump Pill
+st.markdown("""
+    <style>
+    /* Target the Voice Dump popover button in the 3rd column */
+    div[data-testid="column"]:nth-of-type(3) button {
+        background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 50px !important;
+        animation: pulse-purple 2s infinite !important;
+        font-weight: 800 !important;
+    }
+    @keyframes pulse-purple {
+        0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); }
+        70% { box-shadow: 0 0 0 15px rgba(139, 92, 246, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # -----------------------------------------------------------------------------
 # 2. INITIALIZE ANTHROPIC CLIENT (CLAUDE)
 # -----------------------------------------------------------------------------
@@ -114,7 +134,6 @@ except Exception as e:
 safe_status = html.escape(str(status))
 safe_reason = html.escape(str(reason)) 
 safe_color_hex = html.escape(str(color_hex))
-safe_context = html.escape(str(st.session_state.current_context))
 
 st.markdown(f"""
     <div style="margin-top: 5px; margin-bottom: 20px;">
@@ -133,22 +152,34 @@ with st.container(border=True):
         st.markdown(f'<div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; width: 100%; text-align: center; margin:0;">{safe_status}</div>', unsafe_allow_html=True)
     
     with p_col3:
-        with st.popover(f"CONTEXT: {safe_context.upper()}", use_container_width=True):
+        with st.popover("🎙️ Voice Dump", use_container_width=True):
+            st.caption("Tap the mic to log a voice note.")
+            audio_bytes = audio_recorder(
+                text="",
+                recording_color="#ED8796",
+                neutral_color="#8B5CF6",
+                icon_size="2x"
+            )
+                
+    with p_col4:
+        # Hamburger Menu Popover
+        with st.popover("☰ MENU", use_container_width=True):
+            
+            # 1. Context Selector moved into the menu
+            st.markdown("##### 📍 Context")
             new_ctx = st.radio(
                 "Update Activity Context:",
                 ["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"],
                 index=["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context)
             )
-            if st.button("Apply Changes"):
+            if st.button("Apply Context", use_container_width=True):
                 st.session_state.current_context = new_ctx
                 st.rerun()
                 
-    with p_col4:
-        # Hamburger Menu Popover
-        with st.popover("☰ MENU", use_container_width=True):
-            st.markdown("##### 🔌 Integrations")
+            st.divider()
             
-            # 1. Whoop Sync Logic inside the menu
+            # 2. Whoop Sync Logic
+            st.markdown("##### 🔌 Integrations")
             if not st.session_state.whoop_token:
                 # Generate a secure random state string
                 oauth_state = secrets.token_urlsafe(16)
@@ -167,7 +198,7 @@ with st.container(border=True):
             
             st.divider()
             
-            # 2. Clinical Export Logic inside the menu
+            # 3. Clinical Export Logic
             st.markdown("##### 🖨️ Export")
             try:
                 avg_glucose = int(full_data['Glucose_Value'].mean())
@@ -216,21 +247,7 @@ with st.container(border=True):
 
 st.divider()
 
-# -----------------------------------------------------------------------------
-# 5.5 VOICE ASSISTANT (GLOBAL PERSISTENT UI)
-# -----------------------------------------------------------------------------
-st.markdown("### 🎙️ Agentic Voice Dump")
-st.caption("Tap the mic to log an unstructured voice note. The AI will instantly correlate it with your live biology.")
-
-v_col1, v_col2 = st.columns([1, 10])
-with v_col1:
-    audio_bytes = audio_recorder(
-        text="",
-        recording_color="#ED8796",
-        neutral_color="#8B5CF6",
-        icon_size="2x"
-    )
-
+# Process Audio Dump logic directly after the header
 if audio_bytes:
     # Hash the bytes to prevent Streamlit from constantly re-processing the same audio on every interaction
     audio_hash = hashlib.md5(audio_bytes).hexdigest()
@@ -240,8 +257,6 @@ if audio_bytes:
         
         with st.spinner("Processing Voice Dump and Correlating Telemetry..."):
             st.error("🎙️ **Claude API Limitation:** Anthropic does not currently accept raw audio files. To use voice notes, please integrate a transcription service (like OpenAI Whisper) to convert `audio_bytes` to text first.")
-
-st.divider()
 
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION
