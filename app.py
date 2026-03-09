@@ -8,6 +8,7 @@ import logic
 import json
 import whoop
 import hashlib
+import base64
 from datetime import datetime
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
@@ -153,15 +154,17 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    p_col1, p_col2, p_col3, p_col4 = st.columns([1.5, 2.5, 3, 1.5])
+    # Added a 5th column for Smart Meals and rebalanced the widths
+    p_col1, p_col2, p_col3, p_col4, p_col5 = st.columns([1, 2.5, 2.5, 2.5, 1.5])
     
     with p_col1:
-        st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; margin-top: 10px;'>Live Status</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; margin-top: 10px;'>Status</p>", unsafe_allow_html=True)
     
     with p_col2:
         st.markdown(f'<div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; width: 100%; text-align: center; margin:0;">{safe_status}</div>', unsafe_allow_html=True)
     
     with p_col3:
+        # Glow target (3rd column)
         with st.popover("Smart Health Companion", use_container_width=True):
             st.markdown("Ask a question or log how you are feeling. The AI will correlate your input with your live telemetry.")
             st.caption("Tap the mic to log a voice note.")
@@ -171,8 +174,14 @@ with st.container(border=True):
                 neutral_color="#8B5CF6",
                 icon_size="2x"
             )
-                
+            
     with p_col4:
+        # Smart Meals integration using Camera Input
+        with st.popover("🍽️ Smart Meals", use_container_width=True):
+            st.markdown("Snap a photo of your meal to estimate carbohydrates and metabolic impact.")
+            food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
+                
+    with p_col5:
         # Hamburger Menu Popover
         with st.popover("☰ MENU", use_container_width=True):
             
@@ -195,7 +204,6 @@ with st.container(border=True):
                 # Generate a secure random state string
                 oauth_state = secrets.token_urlsafe(16)
 
-                # Inject JavaScript to store the state parameter in a client-side cookie
                 st.components.v1.html(
                     f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>",
                     height=0
@@ -258,16 +266,97 @@ with st.container(border=True):
 
 st.divider()
 
-# Process Audio Dump logic directly after the header
-if audio_bytes:
-    # Hash the bytes to prevent Streamlit from constantly re-processing the same audio on every interaction
+# -----------------------------------------------------------------------------
+# 5.1 EVENT PROCESSORS (Audio & Images)
+# -----------------------------------------------------------------------------
+
+# A. Process Audio Dump logic
+if 'audio_bytes' in locals() and audio_bytes:
     audio_hash = hashlib.md5(audio_bytes).hexdigest()
     
     if audio_hash != st.session_state.get("last_audio_hash"):
         st.session_state.last_audio_hash = audio_hash
-        
         with st.spinner("Processing Voice Dump and Correlating Telemetry..."):
             st.error("🎙️ **Claude API Limitation:** Anthropic does not currently accept raw audio files. To use voice notes, please integrate a transcription service (like OpenAI Whisper) to convert `audio_bytes` to text first.")
+
+# B. Process Smart Meals logic
+if 'food_image' in locals() and food_image is not None:
+    image_bytes = food_image.getvalue()
+    img_hash = hashlib.md5(image_bytes).hexdigest()
+    
+    if img_hash != st.session_state.get("last_img_hash"):
+        st.session_state.last_img_hash = img_hash
+        
+        with st.spinner("Analyzing meal nutrition and estimating carbohydrates..."):
+            try:
+                # Claude vision requires base64 encoded images
+                base64_image = base64.b64encode(image_bytes).decode("utf-8")
+                
+                system_instruction = """
+                You are an elite clinical nutritionist managing a Type 1 Diabetic.
+                Analyze the provided food image. Estimate the total carbohydrates in grams and the glycemic index.
+                Return ONLY a valid JSON object with EXACTLY these keys. Do not include markdown or extra text:
+                - "food_identified": "Short description of the meal."
+                - "estimated_carbs_g": 45
+                - "glycemic_index": "High", "Medium", or "Low"
+                - "analysis": "A concise 2-sentence clinical breakdown of how this meal will impact glucose."
+                """
+                
+                response = client.messages.create(
+                    model=active_model_name,
+                    max_tokens=400,
+                    system=system_instruction,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "image/jpeg",
+                                        "data": base64_image,
+                                    },
+                                },
+                                {
+                                    "type": "text",
+                                    "text": "Analyze this meal for a Type 1 Diabetic."
+                                }
+                            ],
+                        }
+                    ]
+                )
+                
+                clean_text = response.content[0].text.strip()
+                markdown_fence = chr(96) * 3
+                clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
+                
+                meal_data = json.loads(clean_text)
+                st.session_state.latest_meal_analysis = meal_data
+                
+            except Exception as e:
+                st.error(f"Meal Analysis failed. Details: {e}")
+
+# C. Display Meal Analysis Result
+if st.session_state.get("latest_meal_analysis"):
+    meal = st.session_state.latest_meal_analysis
+    
+    st.markdown("### 🍽️ Smart Meals Analysis")
+    m_c1, m_c2, m_c3 = st.columns([1, 1, 2])
+    m_c1.metric("Identified Meal", meal.get("food_identified", "Unknown"))
+    m_c2.metric("Estimated Carbs", f"{meal.get('estimated_carbs_g', 0)}g")
+    
+    gi = meal.get("glycemic_index", "Unknown")
+    gi_color = "🔴" if gi.lower() == "high" else "🟡" if gi.lower() == "medium" else "🟢"
+    m_c3.metric("Glycemic Index", f"{gi_color} {gi}")
+    
+    st.info(f"**Clinical Insight:** {meal.get('analysis', '')}")
+    
+    if st.button("Dismiss Analysis", use_container_width=True):
+        st.session_state.latest_meal_analysis = None
+        st.rerun()
+        
+    st.divider()
 
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION
