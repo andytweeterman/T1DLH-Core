@@ -9,6 +9,7 @@ import json
 import whoop
 import hashlib
 import base64
+import requests
 from datetime import datetime
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
@@ -120,8 +121,7 @@ try:
         )
         latest = full_data.iloc[-1]
 except Exception as e:
-    st.error(f"Data loading failed: {e}. Please check integrations.")
-    st.stop()  # <--- THIS STOPS THE APP FROM CRASHING LATER ON
+    st.error("Data loading failed. Please try again.")
 
 # -----------------------------------------------------------------------------
 # 5. HEADER UI & HAMBURGER MENU
@@ -159,19 +159,15 @@ with st.container(border=True):
             
     with p_col4:
         with st.popover("🍽️ Smart Meals", use_container_width=True):
-            st.markdown("Snap a photo of your meal to estimate carbohydrates and metabolic impact.")
-            # Removed the unsupported facing_mode parameter to prevent the TypeError crash
+            st.markdown("Snap a photo to estimate carbohydrates and metabolic impact.")
             food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
             
             st.divider()
             st.markdown("##### 🔍 Database Lookup")
-            st.caption("Future integration for exact macro & nutrition facts lookup.")
-            st.text_input(
-                "Search Food Database...", 
-                placeholder="E.g., 1 cup cooked quinoa", 
-                disabled=True, 
-                help="Nutritional Database API Integration Coming Soon"
-            )
+            st.caption("Pull verified macros from the USDA FoodData Central database.")
+            with st.form("usda_search_form"):
+                db_search_query = st.text_input("Search Food:", placeholder="E.g., 1 cup cooked quinoa")
+                db_search_submit = st.form_submit_button("Lookup Macros", use_container_width=True)
                 
     with p_col5:
         with st.popover("☰ MENU", use_container_width=True):
@@ -194,7 +190,7 @@ with st.container(border=True):
                     f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>",
                     height=0
                 )
-                auth_link = whoop.get_authorization_url() # <--- REMOVED INVALID ARGUMENT
+                auth_link = whoop.get_authorization_url(oauth_state)
                 st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
             else:
                 if st.button("✅ Whoop Synced", use_container_width=True):
@@ -250,19 +246,18 @@ with st.container(border=True):
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 5.1 EVENT PROCESSORS (Audio & Images)
+# 5.1 EVENT PROCESSORS (Audio & Images & Database)
 # -----------------------------------------------------------------------------
 
 # A. Process Audio Dump logic
 if 'audio_bytes' in locals() and audio_bytes:
     audio_hash = hashlib.md5(audio_bytes).hexdigest()
-    
     if audio_hash != st.session_state.get("last_audio_hash"):
         st.session_state.last_audio_hash = audio_hash
         with st.spinner("Processing Voice Dump and Correlating Telemetry..."):
             st.error("🎙️ **Claude API Limitation:** Anthropic does not currently accept raw audio files. To use voice notes, please integrate a transcription service (like OpenAI Whisper) to convert `audio_bytes` to text first.")
 
-# B. Process Smart Meals logic
+# B. Process Smart Meals logic (CAMERA)
 if 'food_image' in locals() and food_image is not None:
     image_bytes = food_image.getvalue()
     img_hash = hashlib.md5(image_bytes).hexdigest()
@@ -315,23 +310,82 @@ if 'food_image' in locals() and food_image is not None:
                 clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
                 
                 meal_data = json.loads(clean_text)
+                meal_data["source"] = "📸 Vision Estimate"
                 st.session_state.latest_meal_analysis = meal_data
                 
             except Exception as e:
                 st.error(f"Meal Analysis failed. Details: {e}")
 
-# C. Display Meal Analysis Result
+# C. Process Database Lookup (USDA)
+if 'db_search_submit' in locals() and db_search_submit and db_search_query:
+    with st.spinner(f"Querying USDA FoodData Central for '{db_search_query}'..."):
+        try:
+            # USDA provides a free DEMO_KEY for low-volume testing!
+            usda_key = st.secrets.get("USDA_API_KEY", "DEMO_KEY")
+            url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={db_search_query}&api_key={usda_key}&pageSize=1"
+            
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            data = res.json()
+            
+            if data.get("foods"):
+                food = data["foods"][0]
+                food_name = food.get("description", "Unknown Food")
+                nutrients = food.get("foodNutrients", [])
+                
+                # Extract exact macros
+                carbs = next((n["value"] for n in nutrients if n["nutrientName"] == "Carbohydrate, by difference"), 0.0)
+                protein = next((n["value"] for n in nutrients if n["nutrientName"] == "Protein"), 0.0)
+                fat = next((n["value"] for n in nutrients if n["nutrientName"] == "Total lipid (fat)"), 0.0)
+                
+                # Handoff to Claude for clinical synthesis
+                system_instruction = f"""
+                You are my elite personal clinical nutritionist managing my Type 1 Diabetes.
+                I am querying the USDA database for: {food_name}. 
+                Here are the exact macros per 100g: Carbs: {carbs}g, Protein: {protein}g, Fat: {fat}g.
+                
+                Speak directly to me using "you" and "your". Tone should be warm, personal, and highly actionable.
+                Return ONLY a valid JSON object with EXACTLY these keys:
+                - "food_identified": "{food_name.title()}"
+                - "estimated_carbs_g": {int(carbs)}
+                - "glycemic_index": "Database Verified"
+                - "analysis": "A concise 2-sentence clinical breakdown of how this specific macro profile (factoring in the fat and protein) will impact my glucose absorption."
+                """
+                
+                response = client.messages.create(
+                    model=active_model_name,
+                    max_tokens=400,
+                    system=system_instruction,
+                    messages=[{"role": "user", "content": "Provide clinical insight on these exact USDA macros."}]
+                )
+                
+                clean_text = response.content[0].text.strip()
+                markdown_fence = chr(96) * 3
+                clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
+                
+                meal_data = json.loads(clean_text)
+                meal_data["source"] = "🔍 USDA Verified (per 100g)"
+                st.session_state.latest_meal_analysis = meal_data
+            else:
+                st.warning(f"No exact matches found in USDA database for '{db_search_query}'. Try a simpler term.")
+                
+        except Exception as e:
+            st.error(f"Database lookup failed. Details: {e}")
+
+# D. Display Meal Analysis Result
 if st.session_state.get("latest_meal_analysis"):
     meal = st.session_state.latest_meal_analysis
     
     st.markdown("### 🍽️ Smart Meals Analysis")
+    st.caption(f"Data Source: {meal.get('source', 'Unknown')}")
+    
     m_c1, m_c2, m_c3 = st.columns([1, 1, 2])
     m_c1.metric("Identified Meal", meal.get("food_identified", "Unknown"))
     m_c2.metric("Estimated Carbs", f"{meal.get('estimated_carbs_g', 0)}g")
     
     gi = meal.get("glycemic_index", "Unknown")
     gi_color = "🔴" if gi.lower() == "high" else "🟡" if gi.lower() == "medium" else "🟢"
-    m_c3.metric("Glycemic Index", f"{gi_color} {gi}")
+    m_c3.metric("Glycemic Index / Status", f"{gi_color} {gi}")
     
     st.info(f"**Clinical Insight:** {meal.get('analysis', '')}")
     
