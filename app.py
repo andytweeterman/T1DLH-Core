@@ -26,9 +26,6 @@ styles.apply_theme()
 # Custom CSS for the Glowing Pill (Bulletproof Target)
 st.markdown("""
     <style>
-    /* Target the 3rd column specifically inside the bordered header container.
-       This bypasses brittle DOM logic and ensures only this exact button glows.
-    */
     div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(3) button {
         background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
         color: white !important;
@@ -37,14 +34,11 @@ st.markdown("""
         animation: pulse-purple 2s infinite !important;
         transition: all 0.3s ease !important;
     }
-    
-    /* Force the text inside the button to be bold and white */
     div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"]:nth-of-type(3) button * {
         color: white !important;
         font-weight: 800 !important;
         letter-spacing: 0.5px !important;
     }
-    
     @keyframes pulse-purple {
         0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); }
         70% { box-shadow: 0 0 0 15px rgba(139, 92, 246, 0); }
@@ -58,11 +52,8 @@ st.markdown("""
 # -----------------------------------------------------------------------------
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-    
-    # Use the latest Sonnet model
     active_model_name = 'claude-sonnet-4-6' 
     model_status = "✨ CLAUDE SONNET 4.6 ONLINE"
-
 except Exception as e:
     st.error(f"⚠️ API Critical Failure. Details: {e}")
     st.stop()
@@ -73,15 +64,12 @@ except Exception as e:
 if "current_context" not in st.session_state:
     st.session_state.current_context = "Normal"
 
-# 1. Initialize the state variable FIRST
 if "whoop_token" not in st.session_state:
     st.session_state.whoop_token = None
 
-# 2. Try to get a valid token from the vault silently
 if not st.session_state.whoop_token:
     st.session_state.whoop_token = whoop.get_valid_access_token()
 
-# 3. If the vault is empty, check if we are returning from a manual login
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Finalizing Whoop Connection..."):
         query_state = st.query_params.get("state")
@@ -91,11 +79,10 @@ if "code" in st.query_params and not st.session_state.whoop_token:
             auth_code = st.query_params["code"]
             token_data = whoop.get_access_token(auth_code)
 
-            # Safety check: ensure Whoop actually returned a token
             if token_data and "access_token" in token_data:
                 st.session_state.whoop_token = token_data.get("access_token")
-                whoop.save_tokens(token_data) # Save it to the vault!
-                st.query_params.clear() # Scrub the URL clean
+                whoop.save_tokens(token_data) 
+                st.query_params.clear() 
                 st.rerun()
             else:
                 st.error("Whoop Auth Failed. Please try again.")
@@ -106,34 +93,30 @@ if "code" in st.query_params and not st.session_state.whoop_token:
 # -----------------------------------------------------------------------------
 # 4. DATA LOADING
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=300) # Cache simulation for 5 minutes
+@st.cache_data(ttl=300)
 def get_cached_health_data():
     return logic.fetch_health_data()
 
-@st.cache_data(ttl=60) # Cache risk state for 1 minute
-def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False):
-    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode)
+@st.cache_data(ttl=60)
+def get_cached_glycemic_risk(df, context, whoop_data=None, meeting_count=0, speaker_mode=False, owm_api_key=""):
+    return logic.calc_glycemic_risk(df, context, whoop_data, meeting_count, speaker_mode, owm_api_key)
 
 try:
     with st.spinner("Syncing Health & Schedule Data..."):
-        # A. Fetch Whoop Data
         whoop_metrics = None
         if st.session_state.whoop_token:
             whoop_metrics = whoop.fetch_whoop_recovery(st.session_state.whoop_token)
         
-        # B. Fetch Schedule Context 
         meeting_count, speaker_mode = calendar_sync.fetch_calendar_context()
-        
-        # C. Fetch Dexcom/Health Data
         raw_data = get_cached_health_data()
         
-        # D. Calculate Risk 
         full_data, status, color_hex, reason = get_cached_glycemic_risk(
             raw_data, 
             st.session_state.current_context,
             whoop_data=whoop_metrics,
             meeting_count=meeting_count,
-            speaker_mode=speaker_mode
+            speaker_mode=speaker_mode,
+            owm_api_key=st.secrets.get("OWM_API_KEY", "")
         )
         latest = full_data.iloc[-1]
 except Exception as e:
@@ -154,7 +137,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 with st.container(border=True):
-    # Added a 5th column for Smart Meals and rebalanced the widths
     p_col1, p_col2, p_col3, p_col4, p_col5 = st.columns([1, 2.5, 2.5, 2.5, 1.5])
     
     with p_col1:
@@ -164,7 +146,6 @@ with st.container(border=True):
         st.markdown(f'<div class="gov-pill" style="background-color: {safe_color_hex}; color: #000000; width: 100%; text-align: center; margin:0;">{safe_status}</div>', unsafe_allow_html=True)
     
     with p_col3:
-        # Glow target (3rd column)
         with st.popover("Smart Health Companion", use_container_width=True):
             st.markdown("Ask a question or log how you are feeling. The AI will correlate your input with your live telemetry.")
             st.caption("Tap the mic to log a voice note.")
@@ -176,16 +157,23 @@ with st.container(border=True):
             )
             
     with p_col4:
-        # Smart Meals integration using Camera Input
         with st.popover("🍽️ Smart Meals", use_container_width=True):
             st.markdown("Snap a photo of your meal to estimate carbohydrates and metabolic impact.")
-            food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
+            # Default to the rear camera on mobile devices
+            food_image = st.camera_input("Food Scanner", label_visibility="collapsed", facing_mode="environment")
+            
+            st.divider()
+            st.markdown("##### 🔍 Database Lookup")
+            st.caption("Future integration for exact macro & nutrition facts lookup.")
+            st.text_input(
+                "Search Food Database...", 
+                placeholder="E.g., 1 cup cooked quinoa", 
+                disabled=True, 
+                help="Nutritional Database API Integration Coming Soon"
+            )
                 
     with p_col5:
-        # Hamburger Menu Popover
         with st.popover("☰ MENU", use_container_width=True):
-            
-            # 1. Context Selector moved into the menu
             st.markdown("##### 📍 Context")
             new_ctx = st.radio(
                 "Update Activity Context:",
@@ -198,17 +186,13 @@ with st.container(border=True):
                 
             st.divider()
             
-            # 2. Whoop Sync Logic
             st.markdown("##### 🔌 Integrations")
             if not st.session_state.whoop_token:
-                # Generate a secure random state string
                 oauth_state = secrets.token_urlsafe(16)
-
                 st.components.v1.html(
                     f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>",
                     height=0
                 )
-
                 auth_link = whoop.get_authorization_url(oauth_state)
                 st.link_button("🔗 Connect Whoop", auth_link, use_container_width=True)
             else:
@@ -217,12 +201,10 @@ with st.container(border=True):
             
             st.divider()
             
-            # 3. Clinical Export Logic
             st.markdown("##### 🖨️ Export")
             try:
                 avg_glucose = int(full_data['Glucose_Value'].mean())
                 std_dev = int(full_data['Glucose_Value'].std())
-                
                 w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
                 w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
                 w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
@@ -289,17 +271,17 @@ if 'food_image' in locals() and food_image is not None:
         
         with st.spinner("Analyzing meal nutrition and estimating carbohydrates..."):
             try:
-                # Claude vision requires base64 encoded images
                 base64_image = base64.b64encode(image_bytes).decode("utf-8")
                 
                 system_instruction = """
-                You are an elite clinical nutritionist managing a Type 1 Diabetic.
-                Analyze the provided food image. Estimate the total carbohydrates in grams and the glycemic index.
+                You are my elite personal clinical nutritionist managing my Type 1 Diabetes.
+                Analyze the food image I provided. Estimate the total carbohydrates in grams and the glycemic index.
+                Speak directly to me using "you" and "your". Tone should be warm, personal, and highly actionable. NEVER refer to me as "the patient" or "the user".
                 Return ONLY a valid JSON object with EXACTLY these keys. Do not include markdown or extra text:
                 - "food_identified": "Short description of the meal."
                 - "estimated_carbs_g": 45
                 - "glycemic_index": "High", "Medium", or "Low"
-                - "analysis": "A concise 2-sentence clinical breakdown of how this meal will impact glucose."
+                - "analysis": "A concise 2-sentence clinical breakdown of how this meal will impact my glucose."
                 """
                 
                 response = client.messages.create(
@@ -320,7 +302,7 @@ if 'food_image' in locals() and food_image is not None:
                                 },
                                 {
                                     "type": "text",
-                                    "text": "Analyze this meal for a Type 1 Diabetic."
+                                    "text": "Analyze this meal for my Type 1 Diabetes management."
                                 }
                             ],
                         }
@@ -362,12 +344,12 @@ if st.session_state.get("latest_meal_analysis"):
 # 6. NAVIGATION
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state:
-    st.session_state.active_view = "Daily Briefing"
+    st.session_state.active_view = "Insights"
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
-    if st.button("Daily Briefing", use_container_width=True, type="primary" if st.session_state.active_view == "Daily Briefing" else "secondary"):
-        st.session_state.active_view = "Daily Briefing"
+    if st.button("Insights", use_container_width=True, type="primary" if st.session_state.active_view == "Insights" else "secondary"):
+        st.session_state.active_view = "Insights"
         st.rerun()
 with c2:
     if st.button("Wellness", use_container_width=True, type="primary" if st.session_state.active_view == "Wellness" else "secondary"):
@@ -387,12 +369,12 @@ st.markdown("---")
 # 7. RENDER VIEWS
 # -----------------------------------------------------------------------------
 
-# --- VIEW: DAILY BRIEFING (BLUF) ---
-if st.session_state.active_view == "Daily Briefing":
-    st.markdown("### 📋 Executive Daily Briefing")
+# --- VIEW: INSIGHTS (BLUF) ---
+if st.session_state.active_view == "Insights":
+    st.markdown("### 📋 Insights")
     st.markdown("A tactical synthesis of your readiness, load, and biology.")
 
-    with st.spinner("Compiling Executive Briefing..."):
+    with st.spinner("Compiling Insights..."):
         try:
             bg_val = int(latest['Glucose_Value'])
             trend = latest['Trend']
@@ -407,13 +389,14 @@ if st.session_state.active_view == "Daily Briefing":
             day_type = "Weekend / Recharge Day" if is_weekend else "Standard Workday"
 
             system_instruction = f"""
-            You are an executive performance coach. Write a daily briefing based on these metrics:
+            You are my elite personal performance coach. Write your insights based on my current metrics:
             - Day Type: {day_type}
             - Schedule Density: {meeting_count} meetings.
             - Whoop Metrics: {rec_score}% Recovery, {sleep_perf}% Sleep, {strain} Day Strain.
             - Current Glucose: {bg_val} mg/dL, Trend: {trend}.
             - Active Context: {st.session_state.current_context}
             
+            Speak directly to me using "you" and "your". Tone should be warm, personal, and highly actionable. NEVER refer to me as "the patient" or "the user".
             Return ONLY a valid JSON object with the exact keys: "bullet_1", "bullet_2", "bullet_3". Do not include markdown formatting or extra text.
             """
 
@@ -422,24 +405,22 @@ if st.session_state.active_view == "Daily Briefing":
                 max_tokens=500,
                 system=system_instruction,
                 messages=[
-                    {"role": "user", "content": "Generate the executive daily briefing now."}
+                    {"role": "user", "content": "Generate my insights now."}
                 ]
             )
             
             clean_text = response.content[0].text.strip()
-            
-            # Replaced the .startswith method with safe replacement to avoid parser cutoff
             markdown_fence = chr(96) * 3
             clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
             
-            briefing_data = json.loads(clean_text)
+            insights_data = json.loads(clean_text)
 
-            st.info(f"**1. Load & Resilience:** {html.escape(briefing_data.get('bullet_1', ''))}")
-            st.warning(f"**2. Metabolic State:** {html.escape(briefing_data.get('bullet_2', ''))}")
-            st.success(f"**3. Recommended Action:** {html.escape(briefing_data.get('bullet_3', ''))}")
+            st.info(f"**1. Load & Resilience:** {html.escape(insights_data.get('bullet_1', ''))}")
+            st.warning(f"**2. Metabolic State:** {html.escape(insights_data.get('bullet_2', ''))}")
+            st.success(f"**3. Recommended Action:** {html.escape(insights_data.get('bullet_3', ''))}")
 
         except Exception as e:
-            st.error(f"Failed to generate briefing. Details: {e}")
+            st.error(f"Failed to generate insights. Details: {e}")
 
 # --- VIEW A: WELLNESS ---
 elif st.session_state.active_view == "Wellness":
@@ -502,6 +483,84 @@ elif st.session_state.active_view == "Schedule":
     with h4: st.markdown(f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.8rem;'>MEETINGS</div><div style='font-weight:800;'>{meeting_count} ({density_label})</div></div>", unsafe_allow_html=True)
     st.markdown("---")
     st.info(f"**Agentic Insight:** The Risk Engine is currently factoring in **{meeting_count} meetings** over the next 8 hours to adjust your glycemic sensitivity threshold.")
+
+# --- VIEW C: ASSISTANT (Now Integrated via Popovers) ---
+# Check if the user submitted text via the Smart Health Companion form (Text Fallback)
+with st.sidebar:
+    st.markdown("### 🧬 Smart Health Companion (Fallback)")
+    with st.form("journal_form", clear_on_submit=True):
+        text_input = st.text_area("Life Download (Text Fallback):", placeholder="E.g., 'Just finished rebuilding the deck doors. Legs feel heavy.'")
+        if st.form_submit_button("Analyze Load", type="primary") and text_input:
+            with st.spinner("Correlating subjective report with objective telemetry..."):
+                try:
+                    avg_glucose = int(full_data['Glucose_Value'].mean())
+                    std_dev = int(full_data['Glucose_Value'].std())
+                    w_rec = whoop_metrics.get('score', {}).get('recovery_score', 0) if whoop_metrics else 0
+                    w_sleep = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0) if whoop_metrics else 0
+                    w_strain = round(whoop_metrics.get('score', {}).get('day_strain', 0.0), 1) if whoop_metrics else 0.0
+                    
+                    live_context = {
+                        "active_context": st.session_state.current_context,
+                        "meetings_next_8h": meeting_count,
+                        "is_weekend_window": logic.is_weekend_window(),
+                        "current_glucose": int(latest['Glucose_Value']),
+                        "glucose_trend": latest['Trend'],
+                        "glucose_volatility_std_dev": std_dev,
+                        "whoop_recovery": w_rec,
+                        "whoop_sleep": w_sleep,
+                        "whoop_day_strain": w_strain
+                    }
+                    
+                    system_instruction = f"""
+                    You are my elite clinical AI assistant managing my physiological and cognitive load.
+                    Here is my real-time hardware telemetry: {json.dumps(live_context)}
+                    
+                    Correlate my subjective report with my objective telemetry. 
+                    Speak directly to me using "you" and "your". Tone should be warm, personal, and highly actionable. NEVER refer to me as "the patient" or "the user".
+                    Return ONLY a valid JSON object with EXACTLY these keys. Do not include markdown or extra text:
+                    - "reply": "A highly actionable, context-aware response under 40 words. No medical jargon."
+                    - "summary": "A 3-word summary."
+                    - "scores": {{"bio_strain": 5, "cog_load": 5}}
+                    - "impact_prediction": "A 1-sentence prediction of how my current state and telemetry will impact my glucose over the next 2 hours."
+                    """
+                    
+                    response = client.messages.create(
+                        model=active_model_name,
+                        max_tokens=800,
+                        system=system_instruction,
+                        messages=[
+                            {"role": "user", "content": text_input}
+                        ]
+                    )
+                    
+                    clean_text = response.content[0].text.strip()
+                    markdown_fence = chr(96) * 3
+                    clean_text = clean_text.replace(f"{markdown_fence}json", "").replace(markdown_fence, "").strip()
+                    
+                    parsed = json.loads(clean_text)
+                    parsed["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    
+                    if "journal_history" not in st.session_state: st.session_state.journal_history = []
+                    st.session_state.journal_history.insert(0, parsed)
+                except Exception as e: 
+                    st.error(f"Correlation Analysis failed. Details: {e}")
+
+# Render Text Fallback Result if it exists
+if st.session_state.get("journal_history"):
+    entry = st.session_state.journal_history[0]
+    st.markdown("### 🧬 Smart Companion Correlation")
+    st.success(f"**Agentic Insight:** {html.escape(entry.get('reply', ''))}")
+    
+    sc = entry.get("scores", {"bio_strain": 0, "cog_load": 0})
+    c1, c2, c3 = st.columns(3)
+    c1.metric("🧬 Bio-Strain", f"{sc.get('bio_strain', 0)}/10")
+    c2.metric("🧠 Cog-Load", f"{sc.get('cog_load', 0)}/10")
+    c3.metric("📌 Status", html.escape(entry.get("summary", "")))
+    st.info(f"**📉 Horizon Scan:** {html.escape(entry.get('impact_prediction', ''))}")
+    
+    if st.button("Dismiss Feedback", key="dismiss_journal"):
+        st.session_state.journal_history = []
+        st.rerun()
 
 # --- VIEW D: SLEEP IMPACT ---
 elif st.session_state.active_view == "Sleep":
