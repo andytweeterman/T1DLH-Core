@@ -1,6 +1,6 @@
 streamlit
 plotly
-google-generativeai
+anthropic
 pandas
 numpy
 requests
