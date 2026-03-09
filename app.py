@@ -80,13 +80,13 @@ def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=Tru
 @st.cache_data(ttl=300)
 def get_ai_chart_summary(chart_type, time_window, metrics):
     """Standard generic chart summary."""
-    sys_prompt = f"You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
+    sys_prompt = f"You are my elite performance coach managing my Type 1 Diabetes. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. CLINICAL CONTEXT: 80-140 mg/dL is excellent tight control for me, and up to 180 is acceptable. Do not judge my glucose against non-diabetic standards. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend."}], max_tokens=150, parse_json=False)
 
 @st.cache_data(ttl=300)
 def get_granular_ai_summary(time_window, metrics):
     """Deep, granular synthesis combining CGM + Systemic Data."""
-    sys_prompt = f"You are my elite personal performance coach. Analyze my combined Total Life Metrics over the last {time_window}. Metrics: {metrics}. Provide a 3-4 sentence highly actionable and granular synthesis combining my CGM data and systemic recovery metrics. Provide deeper analytical depth than standard overviews. Speak directly to me ('you'). No 'the patient'. No markdown."
+    sys_prompt = f"You are my elite performance coach managing my Type 1 Diabetes. Analyze my combined Total Life Metrics over the last {time_window}. Metrics: {metrics}. CLINICAL CONTEXT: 80-140 mg/dL is excellent tight control for me, and up to 180 is acceptable. Do not judge my glucose against non-diabetic standards. Provide a 3-4 sentence highly actionable and granular synthesis combining my CGM data and systemic recovery metrics. Speak directly to me ('you'). No 'the patient'. No markdown."
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this granular trend."}], max_tokens=250, parse_json=False)
 
 def parse_whoop_data(metrics):
@@ -253,7 +253,7 @@ if 'text_submit' in locals() and text_submit and text_input:
     with st.spinner("Correlating subjective report with objective telemetry..."):
         try:
             ctx = {"context": st.session_state.current_context, "meetings": meeting_count, "glucose": int(latest_bg['Glucose_Value']), "trend": latest_bg['Trend']}
-            sys = f"You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. Correlate my text. Speak to me as 'you'. Return ONLY a valid JSON object with EXACTLY these keys: 'reply' (string), 'summary' (string), 'scores' (dict with 'bio_strain' and 'cog_load' integers), 'impact_prediction' (string)."
+            sys = f"You are my elite AI clinical assistant managing my Type 1 Diabetes. My telemetry: {json.dumps(ctx)}. Correlate my text. Speak to me as 'you'. Return ONLY a valid JSON object with EXACTLY these keys: 'reply' (string), 'summary' (string), 'scores' (dict with 'bio_strain' and 'cog_load' integers), 'impact_prediction' (string)."
             st.session_state.journal_history = [ask_claude(sys, [{"role": "user", "content": text_input}])]
         except Exception as e: st.error(f"Failed: {e}")
 
@@ -264,7 +264,7 @@ if 'food_image' in locals() and food_image is not None:
         with st.spinner("Analyzing meal nutrition..."):
             try:
                 b64 = base64.b64encode(food_image.getvalue()).decode("utf-8")
-                sys = "You are my elite clinical nutritionist. Speak as 'you'. Return ONLY a valid JSON object with EXACTLY these keys: 'food_identified' (string), 'estimated_carbs_g' (integer), 'glycemic_index' (string), 'analysis' (string)."
+                sys = "You are my elite clinical nutritionist managing my Type 1 Diabetes. Speak as 'you'. Return ONLY a valid JSON object with EXACTLY these keys: 'food_identified' (string), 'estimated_carbs_g' (integer), 'glycemic_index' (string), 'analysis' (string)."
                 meal_data = ask_claude(sys, [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}, {"type": "text", "text": "Analyze this meal for T1D."}]}])
                 meal_data["source"] = "📸 Vision Estimate"; st.session_state.latest_meal_analysis = meal_data
             except Exception as e: st.error(f"Failed: {e}")
@@ -276,7 +276,7 @@ if 'db_search_submit' in locals() and db_search_submit and db_search_query:
             if res.get("foods"):
                 nutrients = res["foods"][0].get("foodNutrients", [])
                 c, p, f = [next((n["value"] for n in nutrients if n["nutrientName"] == x), 0.0) for x in ["Carbohydrate, by difference", "Protein", "Total lipid (fat)"]]
-                sys = f"You are my clinical nutritionist. I am querying {res['foods'][0].get('description')}. Macros per 100g: Carbs {c}g, Protein {p}g, Fat {f}g. Return ONLY a valid JSON object with EXACTLY these keys: 'food_identified' (string), 'estimated_carbs_g' (integer), 'glycemic_index' (string), 'analysis' (string)."
+                sys = f"You are my elite clinical nutritionist managing my Type 1 Diabetes. I am querying {res['foods'][0].get('description')}. Macros per 100g: Carbs {c}g, Protein {p}g, Fat {f}g. Return ONLY a valid JSON object with EXACTLY these keys: 'food_identified' (string), 'estimated_carbs_g' (integer), 'glycemic_index' (string), 'analysis' (string)."
                 meal_data = ask_claude(sys, [{"role": "user", "content": "Analyze macros."}])
                 meal_data["source"] = "🔍 USDA Verified (per 100g)"; st.session_state.latest_meal_analysis = meal_data
             else: st.warning("No matches found.")
@@ -315,7 +315,7 @@ st.markdown("---")
 if st.session_state.active_view == "Insights":
     with st.spinner("Compiling Insights..."):
         try:
-            sys = f"You are my elite personal performance coach. Metrics: {st.session_state.current_context} Context, {meeting_count} meetings, Whoop Recovery: {w_rec}%, BG {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). Write insights. Speak directly to me using 'you'. Return ONLY a valid JSON object with keys: 'bullet_1', 'bullet_2', 'bullet_3'."
+            sys = f"You are my elite personal performance coach managing my Type 1 Diabetes. Metrics: {st.session_state.current_context} Context, {meeting_count} meetings, Whoop Recovery: {w_rec}%, BG {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). Write insights. Speak directly to me using 'you'. Return ONLY a valid JSON object with keys: 'bullet_1', 'bullet_2', 'bullet_3'."
             data = ask_claude(sys, [{"role": "user", "content": "Generate my insights now."}])
             st.info(f"**1. Load & Resilience:** {html.escape(data.get('bullet_1', ''))}")
             st.warning(f"**2. Metabolic State:** {html.escape(data.get('bullet_2', ''))}")
