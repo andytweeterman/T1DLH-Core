@@ -35,15 +35,20 @@ st.markdown("""
 
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-    # Using Claude 3 Haiku to guarantee universal API tier access
-    ACTIVE_MODEL = 'claude-3-haiku-20240307' 
+    # Upgraded to Haiku 4.5: Blazing fast and highly cost-effective to preserve your API balance
+    ACTIVE_MODEL = 'claude-haiku-4-5' 
 except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
 
 def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=True):
-    res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=system_instruction, messages=user_messages)
-    text = res.content[0].text.strip()
-    return json.loads(text.replace("```json", "").replace("```", "").strip()) if parse_json else text
+    try:
+        res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=system_instruction, messages=user_messages)
+        text = res.content[0].text.strip()
+        return json.loads(text.replace("```json", "").replace("```", "").strip()) if parse_json else text
+    except Exception as e:
+        if "not_found_error" in str(e) or "404" in str(e):
+            raise Exception(f"**API Account Locked:** Your Anthropic account cannot access '{ACTIVE_MODEL}'. You must add at least $5 in prepaid credits at console.anthropic.com/settings/billing to unlock API access to Claude 3 models.")
+        raise e
 
 def get_ai_chart_summary(chart_type, time_window, metrics):
     sys_prompt = f"You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
