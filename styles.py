@@ -44,6 +44,7 @@ def inject_custom_css():
 
 def get_driver_pill_html(t):
     """Parses a driver string and returns the styled HTML pill."""
+    # Determine the color theme based on the severity/icon
     if "🔴" in t or "🔥" in t or "❄️" in t:
         bg, text, border = "#FFD1D9", "#8A001A", "#FFB3C1" 
     elif "🟡" in t or "⚡" in t or "💤" in t:
@@ -53,10 +54,13 @@ def get_driver_pill_html(t):
     else:
         bg, text, border = "#E1D4FA", "#330099", "#C4B5F5"
     
-    friendly_text = t.replace("BENIGN ENVIRONMENT", "CLEAR WEATHER").replace("LOAD", "CALENDAR LOAD").title().replace("12H", "12h")
+    # Intercept specific backend flags and make them user-friendly before title casing
+    friendly_text = t.replace("BENIGN ENVIRONMENT", "CLEAR WEATHER")
+    friendly_text = friendly_text.replace("LOAD", "CALENDAR LOAD")
+    friendly_text = friendly_text.replace("NOMINAL", "BIOMETRICS NOMINAL")
+    friendly_text = friendly_text.title()
+    
+    # Title casing capitalizes the 'h' in 12h, so we revert just that part
+    friendly_text = friendly_text.replace("12H", "12h")
+    
     return f"<div class='driver-pill' style='background-color:{bg}; color:{text}; border:1px solid {border};'>{friendly_text}</div>"
-
-def render_schedule_card(title, value):
-    """Returns the HTML for a high-contrast Schedule metric card."""
-    card_css = "background-color: #1A1A1A; padding: 20px; border-radius: 20px; border: 1px solid #333333; box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-align: center;"
-    return f"<div style='{card_css}'><div style='color:#AAAAAA;font-size:0.8rem;'>{title}</div><div style='font-weight:800; color:white;'>{value}</div></div>"
