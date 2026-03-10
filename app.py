@@ -35,7 +35,7 @@ st.markdown("""
 
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-    ACTIVE_MODEL = 'claude-3-5-sonnet-latest' 
+    ACTIVE_MODEL = 'claude-3-5-sonnet-20241022' 
 except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
 
@@ -188,13 +188,13 @@ with st.container(border=True):
             vectors.append(f"{icon} {st.session_state.current_context} ({rem})")
 
         # 2. TIR Vector
-        tir_df = full_data.tail(144)
+        tir_df = full_data.tail(36)
         if len(tir_df) > 0:
             low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
-            if low > 5: vectors.append(f"🔴 {int(low)}% BG Low (12h)")
-            elif high > 15: vectors.append(f"🔴 {int(high)}% BG High (12h)")
-            elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (12h)")
-            else: vectors.append(f"🟢 {int(tgt)}% BG On Target (12h)")
+            if low > 5: vectors.append(f"🔴 {int(low)}% BG Low (3h)")
+            elif high > 15: vectors.append(f"🔴 {int(high)}% BG High (3h)")
+            elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (3h)")
+            else: vectors.append(f"🟢 {int(tgt)}% BG On Target (3h)")
 
         # 3. External Vectors
         for p in raw_reason.split("|"):
@@ -427,6 +427,12 @@ elif st.session_state.active_view == "Total Life Metrics":
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    
+    with st.spinner("Synthesizing Trend..."):
+        std_val = p_df['Glucose_Value'].std()
+        safe_std = int(std_val) if pd.notna(std_val) else 0
+        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
+        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str)}")
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
@@ -449,6 +455,12 @@ elif st.session_state.active_view == "Sleep":
         fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
         fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        
+        with st.spinner("Synthesizing..."):
+            std_val = o_df['Glucose_Value'].std()
+            safe_std = int(std_val) if pd.notna(std_val) else 0
+            metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
+            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
