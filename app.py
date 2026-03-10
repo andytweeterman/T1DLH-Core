@@ -87,9 +87,8 @@ def get_time_remaining(end_time):
     return f"{mins//60}h {mins%60}m left" if mins >= 60 else f"{mins}m left"
 
 # -----------------------------------------------------------------------------
-# 2. STATE, TIMERS & DATA LOADING
+# 2. STATE, TIMERS & EVENT LOGGING
 # -----------------------------------------------------------------------------
-# Local config handlers to persist Nightscout connections across page reloads
 def load_ns_config():
     try:
         with open("ns_config.json", "r") as f: return json.load(f)
@@ -102,6 +101,7 @@ def save_ns_config(url, token):
 
 ns_cfg = load_ns_config()
 
+# Initialization
 if "current_context" not in st.session_state: st.session_state.current_context = "Normal"
 if "context_end_time" not in st.session_state: st.session_state.context_end_time = None
 if "ns_url" not in st.session_state: st.session_state.ns_url = ns_cfg.get("url", "")
@@ -109,15 +109,30 @@ if "ns_token" not in st.session_state: st.session_state.ns_token = ns_cfg.get("t
 if "whoop_token" not in st.session_state: st.session_state.whoop_token = whoop.get_valid_access_token()
 if "camera_active" not in st.session_state: st.session_state.camera_active = False
 if "mic_active" not in st.session_state: st.session_state.mic_active = False
+if "event_log" not in st.session_state: st.session_state.event_log = []
+if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts = {}
+
+# Default active view to None to save tokens on load!
+if "active_view" not in st.session_state: st.session_state.active_view = None
+
+def log_event(event_type, description):
+    st.session_state.event_log.append({
+        "time": datetime.now().strftime("%I:%M %p"),
+        "type": event_type,
+        "desc": description
+    })
+    st.session_state.event_log = st.session_state.event_log[-15:] # Keep last 15
 
 # Time-Decaying State Check & Recovery Handoff
 if st.session_state.context_end_time and datetime.now() > st.session_state.context_end_time:
     if st.session_state.current_context == "Exercise":
         st.session_state.current_context = "Recovery"
         st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
+        log_event("📍 Mode Shift", "Auto-shifted from Exercise to Recovery")
     else:
         st.session_state.current_context = "Normal"
         st.session_state.context_end_time = None
+        log_event("📍 Mode Shift", "Context timer expired. Returned to Normal.")
 
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Authenticating Integrations..."):
@@ -144,7 +159,6 @@ try:
         meeting_count = st.session_state.get("local_meeting_count", calendar_sync.fetch_calendar_context()[0])
         speaker_mode = st.session_state.get("local_speaker_mode", calendar_sync.fetch_calendar_context()[1])
         
-        # Flattened whoop schema parsing
         if whoop_metrics:
             w_rec = whoop_metrics.get('recovery', {}).get('score', {}).get('recovery_score', 0) if 'recovery' in whoop_metrics else whoop_metrics.get('score', {}).get('recovery_score', 0)
             w_sleep = whoop_metrics.get('sleep', {}).get('score', {}).get('sleep_performance_percentage', 0) if 'sleep' in whoop_metrics else whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0)
@@ -162,24 +176,19 @@ except Exception as e:
 # -----------------------------------------------------------------------------
 # 3. BUILD ACTIVE MEMORY (Context Injector)
 # -----------------------------------------------------------------------------
-# This parses recent app interactions to give Claude "short term memory" of your actions
 active_memory_list = []
-
-# Check for recently logged meals
 if st.session_state.get("latest_meal_analysis"):
     meal_mem = st.session_state.latest_meal_analysis
     raw_c = meal_mem.get('estimated_carbs_g', 0)
     display_c = raw_c.get('total_estimated', raw_c.get('total', 0)) if isinstance(raw_c, dict) else raw_c
     active_memory_list.append(f"Recently logged a meal: {meal_mem.get('food_identified', 'Food')} ({display_c}g carbs, {meal_mem.get('glycemic_index', 'Unknown')} GI).")
 
-# Check for active exercise/recovery load
 if st.session_state.current_context in ["Exercise", "Recovery"]:
     active_memory_list.append(f"Currently in {st.session_state.current_context} mode. High physiological load expected.")
 elif w_strain > 12.0:
     active_memory_list.append(f"Notable daily Whoop strain recorded today: {w_strain}.")
 
 context_memory_string = " | ".join(active_memory_list) if active_memory_list else "No active external events logged."
-
 
 # -----------------------------------------------------------------------------
 # 4. AUTO-DETECT INTERCEPTS & UI HEADERS
@@ -198,33 +207,44 @@ st.markdown(f"""
 if st.session_state.current_context == "Normal":
     auto_mode, auto_dur, auto_reason = None, 0, ""
     
-    # Rule 1: Sustained High BG (6 readings / 30 mins)
     if len(full_data) >= 6 and all(full_data.tail(6)['Glucose_Value'] > 160):
         auto_mode, auto_dur, auto_reason = "Stressed", 3, "Sustained elevated glucose detected."
-        
-    # Rule 2: Post-Workout Recovery (High Strain + Falling Glucose)
     elif w_strain > 14.0 and latest_bg['Trend'] in ["Falling", "Falling Fast"]:
         auto_mode, auto_dur, auto_reason = "Recovery", 2, "High Whoop strain detected with dropping glucose (Post-Workout)."
-
-    # Rule 3: High Systemic Strain (Whoop) - Active Exercise
     elif w_strain > 14.0:
         auto_mode, auto_dur, auto_reason = "Exercise", 2, "High systemic strain detected via Whoop."
         
+    # Check if this mode is currently muted by the user
+    if auto_mode and auto_mode in st.session_state.muted_intercepts:
+        if datetime.now() < st.session_state.muted_intercepts[auto_mode]:
+            auto_mode = None 
+            
     if auto_mode:
         st.info(f"🤖 **Agentic Intercept:** {auto_reason} Shift to **{auto_mode}** mode for {auto_dur} hours?")
-        if st.button(f"Yes, activate {auto_mode} mode", type="primary"):
+        col1, col2, _ = st.columns([1, 1, 3])
+        if col1.button(f"✅ Yes, activate", key=f"yes_{auto_mode}"):
             st.session_state.current_context = auto_mode
             st.session_state.context_end_time = datetime.now() + timedelta(hours=auto_dur)
+            log_event("📍 Mode Shift", f"Auto-shifted to {auto_mode} ({auto_reason})")
+            st.rerun()
+        if col2.button(f"❌ No, dismiss", key=f"no_{auto_mode}"):
+            st.session_state.muted_intercepts[auto_mode] = datetime.now() + timedelta(hours=2) # Mute for 2h
             st.rerun()
 
-# Hardware Intercept for Active Exercise Mode -> Recovery
 elif st.session_state.current_context == "Exercise":
     if latest_bg['Trend'] == "Falling Fast":
-        st.warning("🤖 **Agentic Intercept:** Rapid glucose drop detected during Exercise. Shift to **Recovery** mode early to focus on refueling?")
-        if st.button("Yes, activate Recovery mode", type="primary"):
-            st.session_state.current_context = "Recovery"
-            st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
-            st.rerun()
+        # Check if Recovery is muted
+        if "Recovery" not in st.session_state.muted_intercepts or datetime.now() >= st.session_state.muted_intercepts["Recovery"]:
+            st.warning("🤖 **Agentic Intercept:** Rapid glucose drop detected during Exercise. Shift to **Recovery** mode early to focus on refueling?")
+            col1, col2, _ = st.columns([1, 1, 3])
+            if col1.button("✅ Yes, activate Recovery", key="yes_rec_early"):
+                st.session_state.current_context = "Recovery"
+                st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
+                log_event("📍 Mode Shift", "Early auto-shift to Recovery due to BG drop")
+                st.rerun()
+            if col2.button("❌ No, dismiss", key="no_rec_early"):
+                st.session_state.muted_intercepts["Recovery"] = datetime.now() + timedelta(hours=2)
+                st.rerun()
 
 with st.container(border=True):
     hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
@@ -233,13 +253,11 @@ with st.container(border=True):
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
         vectors = []
         
-        # 1. DYNAMIC CONTEXT PILL (Priority 1)
         if st.session_state.current_context != "Normal":
             rem = get_time_remaining(st.session_state.context_end_time)
             icon = {"Stressed": "🧘‍♂️", "Exercise": "🏃‍♂️", "Recovery": "🔋", "Sick": "🤒", "Project": "🧠", "Travel": "✈️"}.get(st.session_state.current_context, "🟣")
             vectors.append(f"{icon} {st.session_state.current_context} ({rem})")
 
-        # 2. TIR Vector
         tir_df = full_data.tail(36)
         if len(tir_df) > 0:
             low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
@@ -248,7 +266,6 @@ with st.container(border=True):
             elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (3h)")
             else: vectors.append(f"🟢 {int(tgt)}% BG On Target (3h)")
 
-        # 3. External Vectors
         for p in raw_reason.split("|"):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
@@ -257,7 +274,6 @@ with st.container(border=True):
         st.markdown(tags_html, unsafe_allow_html=True)
     
     with hc2:
-        # UX FIX: Conditionally render the button INSTEAD of the popover if an insight is active
         if st.session_state.get("journal_history"):
             if st.button("🎙️ Log Another Note", use_container_width=True):
                 st.session_state.journal_history = []
@@ -330,7 +346,16 @@ with st.container(border=True):
                 if st.form_submit_button("Apply Mode", use_container_width=True):
                     st.session_state.current_context = new_ctx
                     st.session_state.context_end_time = datetime.now() + timedelta(hours=dur_val) if new_ctx != "Normal" else None
+                    log_event("📍 Mode Shift", f"Manually set to {new_ctx} for {dur_val}h")
                     st.rerun()
+            
+            st.divider()
+            with st.expander("📜 Event Log (History)"):
+                if not st.session_state.event_log:
+                    st.caption("No events logged yet today.")
+                else:
+                    for event in reversed(st.session_state.event_log):
+                        st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray; font-size:0.85em;'>{event['desc']}</span>", unsafe_allow_html=True)
             
             st.divider()
             st.markdown("##### 🔌 Integrations")
@@ -352,26 +377,14 @@ with st.container(border=True):
                         st.cache_data.clear(); st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("**📱 Native Calendar (Mock)**")
-            cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
-            if cal_file:
-                mc, sm = calendar_sync.analyze_local_calendar(cal_file.getvalue().decode("utf-8"))
-                st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
-                st.success(f"Local Sync: {mc} events loaded.")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**⚡ Whoop Telemetry**")
             if not st.session_state.whoop_token:
                 oauth_state = secrets.token_urlsafe(16)
                 st.components.v1.html(f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>", height=0)
                 st.link_button("🔗 Connect Whoop", whoop.get_authorization_url(oauth_state), use_container_width=True)
             else:
-                if whoop_metrics:
-                    st.success("🟢 Connected & Syncing")
-                else:
-                    st.error("🔴 Data Sync Failed (Cached)")
-                    st.caption("Whoop API may have timed out. Force a fresh ping.")
-                    
+                if whoop_metrics: st.success("🟢 Connected & Syncing")
+                else: st.error("🔴 Data Sync Failed (Cached)")
                 if st.button("🔄 Force Refresh Sync", use_container_width=True): 
                     st.session_state.whoop_token = whoop.get_valid_access_token()
                     whoop.fetch_whoop_recovery.clear()
@@ -386,8 +399,6 @@ if 'text_submit' in locals() and text_submit and text_input:
     with st.spinner("Correlating subjective report with objective telemetry..."):
         try:
             ctx = {"context": st.session_state.current_context, "meetings": meeting_count, "glucose": int(latest_bg['Glucose_Value']), "trend": latest_bg['Trend']}
-            
-            # MEMORY INJECTION
             sys = f"""You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. 
             Active Memory Context: {context_memory_string}.
             Correlate my text with the telemetry and memory. 
@@ -399,7 +410,9 @@ if 'text_submit' in locals() and text_submit and text_input:
             - "impact_prediction": "1-sentence prediction."
             - "suggested_mode": "Exercise", "Recovery", "Stressed", "Sick", "Project", "Travel", or "Normal" (Detect from my text)
             - "suggested_duration_hours": 1.5"""
-            st.session_state.journal_history = [ask_claude(sys, [{"role": "user", "content": text_input}])]
+            res_data = ask_claude(sys, [{"role": "user", "content": text_input}])
+            st.session_state.journal_history = [res_data]
+            log_event("🎙️ Note", res_data.get("summary", "Logged observation."))
             st.session_state.mic_active = False 
             st.rerun() 
         except Exception as e: st.error(f"Failed: {e}")
@@ -420,7 +433,13 @@ if 'food_image' in locals() and food_image is not None:
                 - "glycemic_index": "High", "Medium", or "Low" (Must be a String)
                 - "analysis": "A concise 2-sentence clinical breakdown." (Must be a String)"""
                 meal_data = ask_claude(sys, [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}, {"type": "text", "text": "Analyze this meal for T1D."}]}])
-                meal_data["source"] = "📸 Vision Estimate"; st.session_state.latest_meal_analysis = meal_data
+                meal_data["source"] = "📸 Vision Estimate"
+                
+                raw_c = meal_data.get('estimated_carbs_g', 0)
+                display_c = raw_c.get('total_estimated', raw_c.get('total', 0)) if isinstance(raw_c, dict) else raw_c
+                log_event("🍽️ Meal", f"{meal_data.get('food_identified', 'Meal')} ({display_c}g Carbs)")
+                
+                st.session_state.latest_meal_analysis = meal_data
                 st.session_state.camera_active = False 
                 st.rerun() 
             except Exception as e: st.error(f"Failed: {e}")
@@ -435,10 +454,15 @@ if st.session_state.get("journal_history"):
     if s_mode and s_mode != "Normal" and s_mode != st.session_state.current_context:
         s_dur = float(entry.get("suggested_duration_hours", 1.0))
         st.warning(f"🤖 **Context Suggestion:** Your note implies you are in **{s_mode}** mode.")
-        if st.button(f"⚡ Apply '{s_mode}' Mode ({s_dur}h)", use_container_width=True):
+        col1, col2, _ = st.columns([1, 1, 3])
+        if col1.button(f"⚡ Apply '{s_mode}'", key="nlp_yes"):
             st.session_state.current_context = s_mode
             st.session_state.context_end_time = datetime.now() + timedelta(hours=s_dur)
+            log_event("📍 Mode Shift", f"Applied {s_mode} via AI Suggestion")
             st.session_state.journal_history = []
+            st.rerun()
+        if col2.button(f"❌ Dismiss", key="nlp_no"):
+            entry['suggested_mode'] = "Normal" # Suppress this suggestion
             st.rerun()
 
     c1, c2, c3 = st.columns(3); c1.metric("🧬 Bio-Strain", f"{entry.get('scores',{}).get('bio_strain', 0)}/10"); c2.metric("🧠 Cog-Load", f"{entry.get('scores',{}).get('cog_load', 0)}/10"); c3.metric("📌 Status", html.escape(str(entry.get("summary", ""))))
@@ -452,7 +476,6 @@ if st.session_state.get("latest_meal_analysis"):
     m1, m2, m3 = st.columns([1, 1, 2])
     m1.metric("Identified", str(meal.get("food_identified", "Unknown")))
     
-    # Defensive programming: If Claude still hallucinates a dictionary for carbs
     raw_carbs = meal.get('estimated_carbs_g', 0)
     display_carbs = raw_carbs.get('total_estimated', raw_carbs.get('total', 0)) if isinstance(raw_carbs, dict) else raw_carbs
     m2.metric("Carbs", f"{display_carbs}g")
@@ -468,21 +491,44 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-if "active_view" not in st.session_state: st.session_state.active_view = "Daily Briefing"
 v_cols = st.columns(4)
 for i, view in enumerate(["Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
-    with v_cols[i]: 
-        if st.button(view, use_container_width=True, type="primary" if st.session_state.active_view == view else "secondary"): st.session_state.active_view = view; st.rerun()
+    with v_cols[i]:
+        is_active = (st.session_state.active_view == view)
+        if st.button(view, use_container_width=True, type="primary" if is_active else "secondary"):
+            # Toggle logic: If they click the active tab, close it. Otherwise, open it.
+            st.session_state.active_view = None if is_active else view
+            st.rerun()
 st.markdown("---")
 
-if st.session_state.active_view == "Daily Briefing":
+# DYNAMIC LANDING DASHBOARD (Zero API Cost)
+if st.session_state.active_view is None:
+    st.markdown("### 📊 Live System Overview")
+    st.caption("Select a tab above for deep AI synthesis, or monitor baseline telemetry below.")
+    
+    c1, c2, c3 = st.columns(3)
+    delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
+    delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
+    c1.metric("🩸 Blood Sugar", f"{int(latest_bg['Glucose_Value'])} mg/dL", f"{delta_str} ({latest_bg['Trend']})")
+    
+    if st.session_state.whoop_token and whoop_metrics:
+        c2.metric("⚡ Systemic Strain", f"{w_strain}", f"Recovery: {w_rec}%")
+    else:
+        c2.metric("⚡ Systemic Strain", "N/A", "Whoop Not Synced")
+        
+    last_event_str = "No events logged today."
+    if st.session_state.event_log:
+        last_event = st.session_state.event_log[-1]
+        last_event_str = f"{last_event['type']}: {last_event['desc']}"
+    c3.metric("📝 Latest Activity", last_event_str)
+
+elif st.session_state.active_view == "Daily Briefing":
     with st.spinner("Compiling Executive Briefing..."):
         try:
-            # MEMORY INJECTION
             sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
             Metrics: {st.session_state.current_context} Context, {meeting_count} meetings today, Whoop Recovery: {w_rec}%, Current BG: {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). 
             Active Memory Context: {context_memory_string}.
-            CRITICAL: If the Active Memory explains the current glucose trend (e.g., a logged meal causing a spike, or exercise causing a drop), explicitly acknowledge this.
+            CRITICAL: If the Active Memory explains the current glucose trend, explicitly acknowledge this.
             Synthesize this into a proactive daily briefing. Focus on cognitive load management and metabolic forecasting. Speak directly to me using 'you'.
             Return ONLY a valid JSON object with these EXACT keys: 
             'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop, BG, and Memory), 
@@ -520,7 +566,6 @@ elif st.session_state.active_view == "Total Life Metrics":
         std_val = p_df['Glucose_Value'].std()
         safe_std = int(std_val) if pd.notna(std_val) else 0
         metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
-        # MEMORY INJECTION
         st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
 
 elif st.session_state.active_view == "Schedule":
@@ -549,7 +594,6 @@ elif st.session_state.active_view == "Sleep":
             std_val = o_df['Glucose_Value'].std()
             safe_std = int(std_val) if pd.notna(std_val) else 0
             metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
-            # MEMORY INJECTION
             st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
