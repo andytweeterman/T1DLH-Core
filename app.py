@@ -26,31 +26,11 @@ styles.inject_custom_css()
 # Inject Global Button Styles (Pill formatting & Gradients)
 st.markdown("""
     <style>
-    /* Universal Pill Buttons for Navigation and Forms */
-    div[data-testid="stButton"] > button {
-        border-radius: 50px !important;
-        font-weight: 700 !important;
-        transition: all 0.3s ease !important;
-        letter-spacing: 0.5px !important;
-    }
-    div[data-testid="stButton"] > button[kind="primary"] {
-        background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
-        color: white !important;
-        border: none !important;
-    }
-    div[data-testid="stButton"] > button[kind="primary"]:hover {
-        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4) !important;
-        transform: translateY(-2px);
-    }
-    div[data-testid="stButton"] > button[kind="secondary"] {
-        border: 1px solid var(--text-color) !important;
-        opacity: 0.8;
-    }
-    div[data-testid="stButton"] > button[kind="secondary"]:hover {
-        opacity: 1.0;
-        border-color: #8B5CF6 !important;
-        color: #8B5CF6 !important;
-    }
+    div[data-testid="stButton"] > button { border-radius: 50px !important; font-weight: 700 !important; transition: all 0.3s ease !important; letter-spacing: 0.5px !important; }
+    div[data-testid="stButton"] > button[kind="primary"] { background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; color: white !important; border: none !important; }
+    div[data-testid="stButton"] > button[kind="primary"]:hover { box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4) !important; transform: translateY(-2px); }
+    div[data-testid="stButton"] > button[kind="secondary"] { border: 1px solid var(--text-color) !important; opacity: 0.8; }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover { opacity: 1.0; border-color: #8B5CF6 !important; color: #8B5CF6 !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -58,11 +38,9 @@ try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     ACTIVE_MODEL = 'claude-sonnet-4-6' 
 except Exception as e:
-    st.error(f"⚠️ API Critical Failure: {e}")
-    st.stop()
+    st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
 
 def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=True):
-    """Universal wrapper with robust Regex JSON extraction to prevent LLM formatting crashes."""
     res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=system_instruction, messages=user_messages)
     text = res.content[0].text.strip()
     
@@ -79,18 +57,15 @@ def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=Tru
 
 @st.cache_data(ttl=300)
 def get_ai_chart_summary(chart_type, time_window, metrics):
-    """Standard generic chart summary."""
     sys_prompt = f"You are my elite performance coach managing my Type 1 Diabetes. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. CLINICAL CONTEXT: 80-140 mg/dL is excellent tight control for me, and up to 180 is acceptable. Do not judge my glucose against non-diabetic standards. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend."}], max_tokens=150, parse_json=False)
 
 @st.cache_data(ttl=300)
 def get_granular_ai_summary(time_window, metrics):
-    """Deep, granular synthesis combining CGM + Systemic Data."""
     sys_prompt = f"You are my elite performance coach managing my Type 1 Diabetes. Analyze my combined Total Life Metrics over the last {time_window}. Metrics: {metrics}. CLINICAL CONTEXT: 80-140 mg/dL is excellent tight control for me, and up to 180 is acceptable. Do not judge my glucose against non-diabetic standards. Provide a 3-4 sentence highly actionable and granular synthesis combining my CGM data and systemic recovery metrics. Speak directly to me ('you'). No 'the patient'. No markdown."
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this granular trend."}], max_tokens=250, parse_json=False)
 
 def parse_whoop_data(metrics):
-    """Robustly extracts nested Whoop schema into 5 clean variables."""
     if not metrics: return 0, 0, 0, 0, 0.0
     if 'recovery' in metrics or 'sleep' in metrics:
         rec, slp, day = metrics.get('recovery', {}).get('score', {}), metrics.get('sleep', {}).get('score', {}), metrics.get('score', {})
@@ -118,7 +93,7 @@ if "code" in st.query_params and not st.session_state.whoop_token:
                 st.session_state.whoop_token = token_data["access_token"]
                 whoop.save_tokens(token_data); st.query_params.clear(); st.rerun()
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)  # Reduced TTL to 2 minutes for faster live updates
 def get_cached_health_data(url, token):
     if url:
         real_df = logic.fetch_nightscout_data(url, token)
@@ -204,15 +179,25 @@ with st.container(border=True):
             st.markdown("##### 🔌 Integrations")
             st.markdown("**🩸 Nightscout CGM Sync**")
             if st.session_state.ns_url:
-                st.success("🟢 Connected")
-                if st.button("Disconnect", key="dc_ns"):
-                    st.session_state.ns_url = ""; st.session_state.ns_token = ""; st.rerun()
+                if is_real_cgm:
+                    st.success("🟢 Connected (Live Data)")
+                else:
+                    st.error("🔴 Connection Failed (Showing Mock Data)")
+                    
+                if st.button("Disconnect & Clear Cache", key="dc_ns"):
+                    st.session_state.ns_url = ""
+                    st.session_state.ns_token = ""
+                    st.cache_data.clear()  # PURGE CACHE
+                    st.rerun()
             else:
                 with st.form("ns_form"):
                     ns_url_input = st.text_input("Nightscout URL", placeholder="https://your-name.herokuapp.com")
                     ns_token_input = st.text_input("API Token (Optional)", type="password", placeholder="token-123")
                     if st.form_submit_button("Connect", use_container_width=True):
-                        st.session_state.ns_url = ns_url_input; st.session_state.ns_token = ns_token_input; st.rerun()
+                        st.session_state.ns_url = ns_url_input
+                        st.session_state.ns_token = ns_token_input
+                        st.cache_data.clear()  # PURGE CACHE ON NEW CONNECTION
+                        st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**📱 Native Calendar (Mock)**")
