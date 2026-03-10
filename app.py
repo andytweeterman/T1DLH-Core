@@ -275,7 +275,7 @@ elif st.session_state.current_context == "Exercise":
                 st.rerun()
 
 with st.container(border=True):
-    hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
+    hc1, hc2, hc3, hc4, hc5 = st.columns([3.0, 1.8, 1.8, 1.8, 1.6])
     
     with hc1:
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
@@ -298,9 +298,9 @@ with st.container(border=True):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
         
-        # UI POLISH: Matrix Layout for Pills
+        # UI POLISH: Matrix Layout for Pills + Extra Whitespace Below
         tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
-        st.markdown(f"<div style='display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;'>{tags_html}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 25px;'>{tags_html}</div>", unsafe_allow_html=True)
     
     with hc2:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -310,7 +310,6 @@ with st.container(border=True):
                 st.rerun()
         else:
             with st.popover("🎙️ Companion", use_container_width=True):
-                if st.button("🔽 Close Panel", key="close_comp_panel", use_container_width=True): st.rerun() # Mobile UX Fix
                 st.caption("Tap the mic or type a note. The AI will correlate your state with live telemetry.")
                 if not st.session_state.mic_active:
                     if st.button("🎙️ Enable Microphone", use_container_width=True):
@@ -354,7 +353,6 @@ with st.container(border=True):
                 st.rerun()
         else:
             with st.popover("🍽️ Meals", use_container_width=True):
-                if st.button("🔽 Close Panel", key="close_meals_panel", use_container_width=True): st.rerun() # Mobile UX Fix
                 st.caption("Snap a photo to estimate carbohydrates and metabolic impact.")
                 if not st.session_state.camera_active:
                     if st.button("📸 Open Camera Scanner", use_container_width=True):
@@ -372,8 +370,20 @@ with st.container(border=True):
                 
     with hc4:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
+        with st.popover("📅 Events", use_container_width=True):
+            st.caption("Quickly log a daily event.")
+            with st.form("manual_event_form", clear_on_submit=True):
+                ev_type = st.selectbox("Type", ["Meal", "Medication", "Exercise", "Other"], label_visibility="collapsed")
+                ev_desc = st.text_input("Description", placeholder="E.g., 15u Humalog")
+                if st.form_submit_button("Log Event", use_container_width=True):
+                    if ev_desc:
+                        log_event(f"📝 {ev_type}", ev_desc)
+                        st.session_state._toast = f"✅ {ev_type} logged!"
+                        st.rerun()
+                        
+    with hc5:
+        st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
         with st.popover("☰ Menu", use_container_width=True):
-            if st.button("🔽 Close Panel", key="close_menu_panel", use_container_width=True): st.rerun() # Mobile UX Fix
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
                 new_ctx = st.selectbox("Force Context Mode:", ["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
@@ -529,8 +539,8 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-# UI POLISH: 6-Column Navigation Array includes the dedicated "Events" view
-views = ["Home", "Briefing", "Metrics", "Events", "Schedule", "Sleep"]
+# UI POLISH: 5-Column Navigation Array (Events tab removed)
+views = ["Home", "Briefing", "Metrics", "Schedule", "Sleep"]
 v_cols = st.columns(len(views))
 for i, view in enumerate(views):
     is_active = (st.session_state.active_view == view)
@@ -603,16 +613,6 @@ elif st.session_state.active_view == "Metrics":
         safe_std = int(std_val) if pd.notna(std_val) else 0
         metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
         st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
-
-elif st.session_state.active_view == "Events":
-    st.markdown("### 📜 System Event Log")
-    st.caption("A chronological record of agentic shifts, logged meals, and clinical insights.")
-    if not st.session_state.event_log:
-        st.info("No events logged yet today.")
-    else:
-        for event in reversed(st.session_state.event_log):
-            st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray;'>{event['desc']}</span>", unsafe_allow_html=True)
-            st.divider()
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
