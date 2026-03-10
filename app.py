@@ -124,7 +124,7 @@ if "mic_active" not in st.session_state: st.session_state.mic_active = False
 if "event_log" not in st.session_state: st.session_state.event_log = []
 if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts = {}
 if "_toast" not in st.session_state: st.session_state._toast = None
-if "active_view" not in st.session_state: st.session_state.active_view = None
+if "active_view" not in st.session_state: st.session_state.active_view = "Home"
 
 # Consume transient toast message
 if st.session_state._toast:
@@ -526,20 +526,17 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-v_cols = st.columns(4)
-for i, view in enumerate(["Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
+v_cols = st.columns(5)
+for i, view in enumerate(["Home", "Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
     with v_cols[i]:
         is_active = (st.session_state.active_view == view)
         if st.button(view, use_container_width=True, type="primary" if is_active else "secondary"):
-            st.session_state.active_view = None if is_active else view
+            st.session_state.active_view = view
             st.rerun()
 st.markdown("---")
 
 # DYNAMIC LANDING DASHBOARD (Zero API Cost)
-if st.session_state.active_view is None:
-    st.markdown("### 📊 Live System Overview")
-    st.caption("Select a tab above for deep AI synthesis, or monitor baseline telemetry below.")
-    
+if st.session_state.active_view == "Home":
     c1, c2, c3 = st.columns(3)
     delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
     delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
@@ -613,7 +610,6 @@ elif st.session_state.active_view == "Schedule":
 
 elif st.session_state.active_view == "Sleep":
     if st.session_state.whoop_token and whoop_metrics:
-        st.markdown("##### 💤 Sleep Metrics")
         st.metric("Sleep Perf", f"{w_sleep}%")
         
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
