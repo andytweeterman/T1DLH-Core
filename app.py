@@ -3,7 +3,6 @@ import secrets
 import streamlit as st
 import plotly.graph_objects as go
 import anthropic
-import styles
 import logic
 import json
 import whoop
@@ -23,16 +22,57 @@ import tempfile
 # 1. SETUP & CLAUDE WRAPPER 
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_sidebar_state="collapsed")
-styles.apply_theme()
-styles.inject_custom_css()
 
 st.markdown("""
     <style>
-    div[data-testid="stButton"] > button { border-radius: 50px !important; font-weight: 700 !important; transition: all 0.3s ease !important; letter-spacing: 0.5px !important; }
-    div[data-testid="stButton"] > button[kind="primary"] { background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; color: white !important; border: none !important; }
-    div[data-testid="stButton"] > button[kind="primary"]:hover { box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4) !important; transform: translateY(-2px); }
-    div[data-testid="stButton"] > button[kind="secondary"] { border: 1px solid var(--text-color) !important; opacity: 0.8; }
-    div[data-testid="stButton"] > button[kind="secondary"]:hover { opacity: 1.0; border-color: #8B5CF6 !important; color: #8B5CF6 !important; }
+    /* Global Base Settings */
+    :root {
+        --secondary-background-color: #1A1A24;
+    }
+    
+    /* Primary Buttons (Gradients) */
+    div[data-testid="stButton"] > button[kind="primary"] { 
+        background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; 
+        color: white !important; border: none !important; 
+        border-radius: 12px !important; font-weight: 700 !important; 
+        transition: all 0.3s ease !important; letter-spacing: 0.5px !important; 
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3) !important;
+    }
+    div[data-testid="stButton"] > button[kind="primary"]:hover { 
+        box-shadow: 0 6px 16px rgba(139, 92, 246, 0.5) !important; transform: translateY(-2px); 
+    }
+    
+    /* Secondary Buttons / Tabs (Polished) */
+    div[data-testid="stButton"] > button[kind="secondary"] { 
+        background-color: #24242F !important; 
+        border: 1px solid #3A3A4A !important; 
+        color: #E2E8F0 !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
+        opacity: 1.0 !important;
+        transition: all 0.3s ease !important;
+    }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover { 
+        border-color: #8B5CF6 !important; 
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15) !important;
+        color: #A78BFA !important; 
+    }
+
+    /* Premium Popover Buttons */
+    div[data-testid="stPopover"] > button {
+        background-color: #1A1A24 !important;
+        border: 1px solid rgba(139, 92, 246, 0.3) !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
+        border-radius: 16px !important;
+        transition: all 0.3s ease !important;
+        font-weight: 700 !important;
+    }
+    div[data-testid="stPopover"] > button:hover {
+        box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4) !important;
+        transform: translateY(-2px);
+        border-color: rgba(139, 92, 246, 0.8) !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -61,13 +101,36 @@ def get_ai_chart_summary(chart_type, time_window, metrics, active_memory=""):
     sys_prompt = f"""You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. 
     Metrics: {metrics}. 
     Recent Events Context: {active_memory}. 
-    CRITICAL INSTRUCTION: If the Recent Events explain the current glucose trend (e.g., a recently logged meal causing a spike, or recent exercise/strain causing a drop), you MUST explicitly acknowledge that connection. 
-    Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."""
+    CRITICAL INSTRUCTIONS: 
+    1. Be forgiving and realistic about blood sugar management. The target range is 70-160 mg/dL. Occasional spikes up to 200 mg/dL are a completely normal part of living with T1D. Do NOT scold me or use alarmist language for imperfect numbers.
+    2. If the Recent Events explain the current glucose trend (e.g., a logged meal causing a spike, or recent exercise causing a drop), you MUST explicitly acknowledge that connection. 
+    Provide a 2-sentence highly actionable and encouraging synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."""
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend based on my recent context."}], max_tokens=150, parse_json=False)
 
 def render_adaptive_schedule_card(title, value):
-    card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 20px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
+    card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 16px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
     return f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.85rem;font-weight:700;text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
+
+def local_get_driver_pill_html(t):
+    """Custom grid-based symmetrical pill renderer"""
+    if not t: return "<div></div>" # Empty placeholder to maintain symmetry
+    if "🔴" in t or "🔥" in t or "❄️" in t or "🤒" in t:
+        bg, text, border = "#FFD1D9", "#8A001A", "#FFB3C1" 
+    elif "🟡" in t or "⚡" in t or "💤" in t or "🧘‍♂️" in t or "🏃‍♂️" in t:
+        bg, text, border = "#FFEDB3", "#805500", "#FFDF80"
+    elif "🔋" in t or "RECOVERY" in t.upper() or "RESTORE" in t.upper():
+        bg, text, border = "#C2E0FF", "#004085", "#99CCFF"
+    elif "🟢" in t or "☁️" in t:
+        bg, text, border = "#D1F4D9", "#00591A", "#A3E9B3"
+    else:
+        bg, text, border = "#E1D4FA", "#330099", "#C4B5F5"
+    
+    friendly_text = t.replace("BENIGN ENVIRONMENT", "CLEAR WEATHER").replace("LOAD", "CALENDAR LOAD").replace("NOMINAL", "BIOMETRICS NOMINAL").title()
+    friendly_text = friendly_text.replace("12H", "12h").replace("3H", "3h").replace("Bg", "BG").replace("Mode", "MODE")
+    friendly_text = re.sub(r'(\d+)H', r'\1h', friendly_text)
+    friendly_text = re.sub(r'(\d+)M', r'\1m', friendly_text).replace(" Left)", " left)")
+    
+    return f"<div style='background-color:{bg}; color:{text}; border:1px solid {border}; border-radius: 12px; padding: 10px 4px; font-size: 0.75rem; font-weight: 800; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center; height: 100%; line-height: 1.2;'>{friendly_text}</div>"
 
 # --- DYNAMIC TONE ENGINE ---
 def get_claude_tone():
@@ -77,7 +140,7 @@ def get_claude_tone():
     elif ctx == "Recovery": return "calm, analytical, and restorative. Focus on refueling, managing post-exercise spikes/drops, and optimizing sleep."
     elif ctx == "Sick": return "compassionate, cautious, and clinically protective. Focus on hydration, gentle recovery, and fighting resistance."
     elif ctx == "Travel": return "vigilant, organized, and proactive. Focus on logistical stability."
-    else: return "warm, personal, and highly actionable like an elite clinical coach."
+    else: return "warm, personal, highly compassionate, and actionable like an elite clinical coach."
 
 def get_time_remaining(end_time):
     if not end_time: return ""
@@ -114,7 +177,6 @@ if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts
 if "_toast" not in st.session_state: st.session_state._toast = None
 if "active_view" not in st.session_state: st.session_state.active_view = None
 
-# Consume transient toast message (Jules UX Update)
 if st.session_state._toast:
     st.toast(st.session_state._toast)
     st.session_state._toast = None
@@ -125,22 +187,22 @@ def log_event(event_type, description):
         "type": event_type,
         "desc": description
     })
-    st.session_state.event_log = st.session_state.event_log[-15:] # Keep last 15
+    st.session_state.event_log = st.session_state.event_log[-15:] 
 
-# Time-Decaying State Check & Recovery Handoff
+# Time-Decaying State Check
 if st.session_state.context_end_time and datetime.now() > st.session_state.context_end_time:
     if st.session_state.current_context == "Exercise":
         st.session_state.current_context = "Recovery"
         st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
         log_event("📍 Mode Shift", "Auto-shifted from Exercise to Recovery")
         st.session_state._toast = "🔋 Exercise concluded. Recovery mode activated."
-        st.rerun() # Force rerun to show toast
+        st.rerun() 
     else:
         st.session_state.current_context = "Normal"
         st.session_state.context_end_time = None
         log_event("📍 Mode Shift", "Context timer expired. Returned to Normal.")
         st.session_state._toast = "🟢 Context timer expired. Returned to Normal."
-        st.rerun() # Force rerun to show toast
+        st.rerun() 
 
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Authenticating Integrations..."):
@@ -215,14 +277,13 @@ st.markdown(f"""
 if st.session_state.current_context == "Normal":
     auto_mode, auto_dur, auto_reason = None, 0, ""
     
-    if len(full_data) >= 6 and all(full_data.tail(6)['Glucose_Value'] > 160):
+    if len(full_data) >= 6 and all(full_data.tail(6)['Glucose_Value'] > 180):
         auto_mode, auto_dur, auto_reason = "Stressed", 3, "Sustained elevated glucose detected."
     elif w_strain > 14.0 and latest_bg['Trend'] in ["Falling", "Falling Fast"]:
         auto_mode, auto_dur, auto_reason = "Recovery", 2, "High Whoop strain detected with dropping glucose (Post-Workout)."
     elif w_strain > 14.0:
         auto_mode, auto_dur, auto_reason = "Exercise", 2, "High systemic strain detected via Whoop."
         
-    # Check if this mode is currently muted by the user
     if auto_mode and auto_mode in st.session_state.muted_intercepts:
         if datetime.now() < st.session_state.muted_intercepts[auto_mode]:
             auto_mode = None 
@@ -237,12 +298,11 @@ if st.session_state.current_context == "Normal":
             st.session_state._toast = f"✅ Agentic shift to {auto_mode} active!"
             st.rerun()
         if col2.button(f"❌ No, dismiss", key=f"no_{auto_mode}"):
-            st.session_state.muted_intercepts[auto_mode] = datetime.now() + timedelta(hours=2) # Mute for 2h
+            st.session_state.muted_intercepts[auto_mode] = datetime.now() + timedelta(hours=2)
             st.rerun()
 
 elif st.session_state.current_context == "Exercise":
     if latest_bg['Trend'] == "Falling Fast":
-        # Check if Recovery is muted
         if "Recovery" not in st.session_state.muted_intercepts or datetime.now() >= st.session_state.muted_intercepts["Recovery"]:
             st.warning("🤖 **Agentic Intercept:** Rapid glucose drop detected during Exercise. Shift to **Recovery** mode early to focus on refueling?")
             col1, col2, _ = st.columns([1, 1, 3])
@@ -268,9 +328,15 @@ with st.container(border=True):
             icon = {"Stressed": "🧘‍♂️", "Exercise": "🏃‍♂️", "Recovery": "🔋", "Sick": "🤒", "Project": "🧠", "Travel": "✈️"}.get(st.session_state.current_context, "🟣")
             vectors.append(f"{icon} {st.session_state.current_context} ({rem})")
 
+        # Updated TIR Logic (More forgiving ranges)
         tir_df = full_data.tail(36)
         if len(tir_df) > 0:
-            low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
+            low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [
+                tir_df['Glucose_Value'] < 70, 
+                (tir_df['Glucose_Value'] >= 70) & (tir_df['Glucose_Value'] <= 160), 
+                (tir_df['Glucose_Value'] > 160) & (tir_df['Glucose_Value'] <= 200), 
+                tir_df['Glucose_Value'] > 200
+            ]]
             if low > 5: vectors.append(f"🔴 {int(low)}% BG Low (3h)")
             elif high > 15: vectors.append(f"🔴 {int(high)}% BG High (3h)")
             elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (3h)")
@@ -280,7 +346,13 @@ with st.container(border=True):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
         
-        tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
+        # UI POLISH: Render as a 4-column symmetrical grid
+        tags_html = "<div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%;'>"
+        padded_vectors = vectors[:4] + [""] * (4 - len(vectors[:4]))
+        for t in padded_vectors:
+            tags_html += local_get_driver_pill_html(t)
+        tags_html += "</div>"
+        
         st.markdown(tags_html, unsafe_allow_html=True)
     
     with hc2:
@@ -511,20 +583,18 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-v_cols = st.columns(4)
-for i, view in enumerate(["Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
+v_cols = st.columns(5)
+for i, view in enumerate(["Home", "Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
     with v_cols[i]:
-        is_active = (st.session_state.active_view == view)
+        # 'Home' is active if active_view is None
+        is_active = (st.session_state.active_view == view) or (view == "Home" and st.session_state.active_view is None)
         if st.button(view, use_container_width=True, type="primary" if is_active else "secondary"):
-            st.session_state.active_view = None if is_active else view
+            st.session_state.active_view = None if view == "Home" else view
             st.rerun()
 st.markdown("---")
 
 # DYNAMIC LANDING DASHBOARD (Zero API Cost)
 if st.session_state.active_view is None:
-    st.markdown("### 📊 Live System Overview")
-    st.caption("Select a tab above for deep AI synthesis, or monitor baseline telemetry below.")
-    
     c1, c2, c3 = st.columns(3)
     delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
     delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
@@ -547,7 +617,7 @@ elif st.session_state.active_view == "Daily Briefing":
             sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
             Metrics: {st.session_state.current_context} Context, {meeting_count} meetings today, Whoop Recovery: {w_rec}%, Current BG: {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). 
             Active Memory Context: {context_memory_string}.
-            CRITICAL: If the Active Memory explains the current glucose trend, explicitly acknowledge this.
+            CRITICAL: Be forgiving and realistic about blood sugar. Target is 70-160 mg/dL. Spikes up to 200 mg/dL are normal. If the Active Memory explains the current glucose trend, explicitly acknowledge this.
             Synthesize this into a proactive daily briefing. Focus on cognitive load management and metabolic forecasting. Speak directly to me using 'you'.
             Return ONLY a valid JSON object with these EXACT keys: 
             'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop, BG, and Memory), 
@@ -576,6 +646,7 @@ elif st.session_state.active_view == "Total Life Metrics":
     tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
+    st.markdown("##### 🩸 Real time Blood Sugar")
     fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
@@ -597,7 +668,6 @@ elif st.session_state.active_view == "Schedule":
 
 elif st.session_state.active_view == "Sleep":
     if st.session_state.whoop_token and whoop_metrics:
-        st.markdown("##### 💤 Sleep Metrics")
         st.metric("Sleep Perf", f"{w_sleep}%")
         
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
