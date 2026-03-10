@@ -300,7 +300,16 @@ with st.container(border=True):
                 st.components.v1.html(f"<script>window.parent.document.cookie = 'whoop_oauth_state={oauth_state}; path=/; max-age=3600; SameSite=Lax';</script>", height=0)
                 st.link_button("🔗 Connect Whoop", whoop.get_authorization_url(oauth_state), use_container_width=True)
             else:
-                if st.button("✅ Whoop Synced", use_container_width=True): st.rerun() 
+                if whoop_metrics:
+                    st.success("🟢 Connected & Syncing")
+                else:
+                    st.error("🔴 Data Sync Failed (Cached)")
+                    st.caption("Whoop API may have timed out. Force a fresh ping.")
+                    
+                if st.button("🔄 Force Refresh Sync", use_container_width=True): 
+                    st.session_state.whoop_token = whoop.get_valid_access_token()
+                    whoop.fetch_whoop_recovery.clear()
+                    st.rerun() 
 
 st.divider()
 
