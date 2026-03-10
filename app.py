@@ -57,6 +57,11 @@ def render_adaptive_schedule_card(title, value):
 # -----------------------------------------------------------------------------
 # 2. STATE & DATA LOADING
 # -----------------------------------------------------------------------------
+if "_toast" not in st.session_state: st.session_state._toast = None
+if st.session_state._toast:
+    st.toast(st.session_state._toast)
+    st.session_state._toast = None
+
 if "current_context" not in st.session_state: st.session_state.current_context = "Normal"
 if "ns_url" not in st.session_state: st.session_state.ns_url = ""
 if "ns_token" not in st.session_state: st.session_state.ns_token = ""
@@ -200,7 +205,7 @@ with st.container(border=True):
     with hc4:
         with st.popover("☰ Menu", use_container_width=True):
             new_ctx = st.radio("Force Context:", ["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
-            if st.button("Apply Context", use_container_width=True): st.session_state.current_context = new_ctx; st.rerun()
+            if st.button("Apply Context", use_container_width=True): st.session_state.current_context = new_ctx; st.session_state._toast = "Context saved!"; st.rerun()
             st.divider()
             
             st.markdown("##### 🔌 Integrations")
