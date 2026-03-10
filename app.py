@@ -26,7 +26,7 @@ st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_s
 styles.apply_theme()
 styles.inject_custom_css()
 
-# UI POLISH: Shadows, Alignment Spacers, and Premium Button CSS
+# UI POLISH: Shadows, Alignment Spacers, Premium Button CSS, and Matrix Grid
 st.markdown("""
     <style>
     /* Global Button Styling with Drop Shadows */
@@ -39,6 +39,16 @@ st.markdown("""
     /* Popover Button specific shadow to make them pop */
     div[data-testid="stPopover"] > button { border-radius: 50px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important; border: 1px solid rgba(139, 92, 246, 0.2) !important; transition: all 0.3s ease !important;}
     div[data-testid="stPopover"] > button:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(139, 92, 246, 0.25) !important; border-color: #8B5CF6 !important; }
+    
+    /* Matrix Grid Override for Total Life Drivers */
+    .driver-pill { 
+        margin: 0 !important; 
+        width: 100% !important; 
+        justify-content: center !important; 
+        text-align: center !important; 
+        padding: 8px 4px !important;
+        font-size: 0.75rem !important;
+    }
     
     /* Dynamic Alignment Spacer (Only shows on Desktop) */
     @media (max-width: 768px) {
@@ -288,8 +298,9 @@ with st.container(border=True):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
         
+        # UI POLISH: Matrix Layout for Pills
         tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
-        st.markdown(tags_html, unsafe_allow_html=True)
+        st.markdown(f"<div style='display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;'>{tags_html}</div>", unsafe_allow_html=True)
     
     with hc2:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -373,14 +384,6 @@ with st.container(border=True):
                     log_event("📍 Mode Shift", f"Manually set to {new_ctx} for {dur_val}h")
                     st.session_state._toast = f"✅ Context updated to {new_ctx}!"
                     st.rerun()
-            
-            st.divider()
-            with st.expander("📜 Event Log (History)"):
-                if not st.session_state.event_log:
-                    st.caption("No events logged yet today.")
-                else:
-                    for event in reversed(st.session_state.event_log):
-                        st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray; font-size:0.85em;'>{event['desc']}</span>", unsafe_allow_html=True)
             
             st.divider()
             st.markdown("##### 🔌 Integrations")
@@ -526,13 +529,14 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-v_cols = st.columns(5)
-for i, view in enumerate(["Home", "Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
-    with v_cols[i]:
-        is_active = (st.session_state.active_view == view)
-        if st.button(view, use_container_width=True, type="primary" if is_active else "secondary"):
-            st.session_state.active_view = view
-            st.rerun()
+# UI POLISH: 6-Column Navigation Array includes the dedicated "Events" view
+views = ["Home", "Briefing", "Metrics", "Events", "Schedule", "Sleep"]
+v_cols = st.columns(len(views))
+for i, view in enumerate(views):
+    is_active = (st.session_state.active_view == view)
+    if v_cols[i].button(view, use_container_width=True, type="primary" if is_active else "secondary"):
+        st.session_state.active_view = view
+        st.rerun()
 st.markdown("---")
 
 # DYNAMIC LANDING DASHBOARD (Zero API Cost)
@@ -553,7 +557,7 @@ if st.session_state.active_view == "Home":
         last_event_str = f"{last_event['type']}: {last_event['desc']}"
     c3.metric("📝 Latest Activity", last_event_str)
 
-elif st.session_state.active_view == "Daily Briefing":
+elif st.session_state.active_view == "Briefing":
     with st.spinner("Compiling Executive Briefing..."):
         try:
             sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
@@ -573,7 +577,7 @@ elif st.session_state.active_view == "Daily Briefing":
             st.success(f"**🎯 Action Directive:** {html.escape(data.get('action_directive', ''))}")
         except Exception as e: st.error(f"Failed: {e}")
 
-elif st.session_state.active_view == "Total Life Metrics":
+elif st.session_state.active_view == "Metrics":
     c_dex = st.columns(2)
     c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
     c_dex[1].metric("Trend", latest_bg['Trend'])
@@ -599,6 +603,16 @@ elif st.session_state.active_view == "Total Life Metrics":
         safe_std = int(std_val) if pd.notna(std_val) else 0
         metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
         st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
+
+elif st.session_state.active_view == "Events":
+    st.markdown("### 📜 System Event Log")
+    st.caption("A chronological record of agentic shifts, logged meals, and clinical insights.")
+    if not st.session_state.event_log:
+        st.info("No events logged yet today.")
+    else:
+        for event in reversed(st.session_state.event_log):
+            st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray;'>{event['desc']}</span>", unsafe_allow_html=True)
+            st.divider()
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
