@@ -12,6 +12,7 @@ import base64
 import requests
 import re
 import pandas as pd
+import numpy as np
 import os
 from datetime import datetime, timedelta
 import calendar_sync
@@ -135,6 +136,7 @@ if "event_log" not in st.session_state: st.session_state.event_log = []
 if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts = {}
 if "_toast" not in st.session_state: st.session_state._toast = None
 if "active_view" not in st.session_state: st.session_state.active_view = "Home"
+if "latest_trend_insight" not in st.session_state: st.session_state.latest_trend_insight = "No macro trend synthesized yet. Run an analysis in the Trends tab."
 
 # Consume transient toast message
 if st.session_state._toast:
@@ -304,7 +306,6 @@ with st.container(border=True):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
         
-        # UI POLISH: Matrix Layout for Pills + Extra Whitespace Below
         tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
         st.markdown(f"<div style='display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 25px;'>{tags_html}</div>", unsafe_allow_html=True)
     
@@ -390,8 +391,6 @@ with st.container(border=True):
     with hc5:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
         with st.popover("☰ Menu", use_container_width=True):
-            if st.button("🔽 Close Panel", key="close_menu_panel", use_container_width=True): st.rerun() # Mobile UX Fix
-            
             st.markdown("##### 📖 Log Book")
             with st.container(border=True):
                 if not st.session_state.event_log:
@@ -401,7 +400,6 @@ with st.container(border=True):
                         st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray; font-size:0.85em;'>{event['desc']}</span>", unsafe_allow_html=True)
                         
             st.divider()
-            
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
                 new_ctx = st.selectbox("Force Context Mode:", ["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
@@ -557,8 +555,7 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-# UI POLISH: 5-Column Navigation Array (Events tab removed)
-views = ["Home", "Briefing", "Metrics", "Schedule", "Sleep"]
+views = ["Home", "Briefing", "Metrics", "Trends", "Schedule", "Sleep"]
 v_cols = st.columns(len(views))
 for i, view in enumerate(views):
     is_active = (st.session_state.active_view == view)
@@ -584,6 +581,9 @@ if st.session_state.active_view == "Home":
         last_event = st.session_state.event_log[-1]
         last_event_str = f"{last_event['type']}: {last_event['desc']}"
     c3.metric("📝 Latest Activity", last_event_str)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.info(f"**🔭 Macro Trend Highlight:** {st.session_state.latest_trend_insight}")
 
 elif st.session_state.active_view == "Briefing":
     with st.spinner("Compiling Executive Briefing..."):
@@ -631,6 +631,52 @@ elif st.session_state.active_view == "Metrics":
         safe_std = int(std_val) if pd.notna(std_val) else 0
         metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
         st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
+
+elif st.session_state.active_view == "Trends":
+    st.markdown("### 📊 Macro Trends & Pattern Recognition")
+    st.caption("Claude continuously learns from your Journal, Meals, and Biometrics to identify long-term metabolic patterns.")
+
+    trend_window = st.radio("Select Horizon", ["1 Week", "1 Month", "3 Months"], horizontal=True)
+
+    # Generate visual mockup of long-term data for the prototype
+    days = 7 if trend_window == "1 Week" else 30 if trend_window == "1 Month" else 90
+    dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+    mock_tir = np.clip(np.random.normal(75, 8, days), 0, 100) # Simulating ~75% average TIR
+    mock_avg_bg = np.clip(np.random.normal(135, 15, days), 70, 200)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=dates, y=mock_tir, name="Time in Range (%)", marker_color="#8B5CF6", opacity=0.7))
+    fig.add_trace(go.Scatter(x=dates, y=mock_avg_bg, name="Avg Glucose (mg/dL)", mode="lines+markers", line=dict(color="#ED8796", width=3), yaxis="y2"))
+
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
+        height=350, margin=dict(l=0, r=0, t=30, b=0),
+        yaxis=dict(title="TIR (%)", range=[0, 100], showgrid=False),
+        yaxis2=dict(title="Avg BG", range=[50, 250], overlaying="y", side="right", showgrid=True, gridcolor='rgba(128,128,128,0.2)'),
+        showlegend=False
+    )
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+    if st.button(f"🧠 Synthesize {trend_window} Patterns", type="primary", use_container_width=True):
+        with st.spinner("Analyzing historical telemetry, journal logs, and metabolic load..."):
+            try:
+                # Extract all historical journals for context
+                journal_text = " | ".join([f"{e['time']}: {e['desc']}" for e in st.session_state.event_log]) if st.session_state.event_log else "No recent manual logs."
+
+                sys_prompt = f"""You are my elite long-term performance endocrinologist.
+                Analyze my {trend_window} metabolic trends based on my recent journals, current Whoop strain ({w_strain}), and average TIR of {int(mock_tir.mean())}%.
+                Journal Context: {journal_text}
+                Provide a 3-sentence deep insight identifying a hidden pattern (e.g., "Your TIR drops on days you log high stress and sleep poorly"). Speak directly to me ('you'). No markdown.
+                """
+                trend_insight = ask_claude(sys_prompt, [{"role": "user", "content": "Find my hidden metabolic patterns."}], max_tokens=200, parse_json=False)
+                
+                # Save to session state so it permanently appears on the Home dashboard
+                st.session_state.latest_trend_insight = trend_insight
+                st.success(f"**Agentic Synthesis:** {trend_insight}")
+            except Exception as e:
+                st.error(f"Analysis failed: {e}")
+    elif st.session_state.latest_trend_insight != "No macro trend synthesized yet. Run an analysis in the Trends tab.":
+        st.success(f"**Latest Synthesis:** {st.session_state.latest_trend_insight}")
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
