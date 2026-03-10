@@ -61,6 +61,8 @@ if "current_context" not in st.session_state: st.session_state.current_context =
 if "ns_url" not in st.session_state: st.session_state.ns_url = ""
 if "ns_token" not in st.session_state: st.session_state.ns_token = ""
 if "whoop_token" not in st.session_state: st.session_state.whoop_token = whoop.get_valid_access_token()
+if "camera_active" not in st.session_state: st.session_state.camera_active = False
+if "mic_active" not in st.session_state: st.session_state.mic_active = False
 
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Authenticating Integrations..."):
@@ -119,14 +121,16 @@ with st.container(border=True):
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
         vectors = []
         
+        # TIR Vector
         tir_df = full_data.tail(144)
         if len(tir_df) > 0:
             low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
-            if low > 5: vectors.append(f"🔴 {int(low)}% Low (12h)")
-            elif high > 15: vectors.append(f"🔴 {int(high)}% High (12h)")
-            elif elev > 25: vectors.append(f"🟡 {int(elev)}% Elevated (12h)")
-            else: vectors.append(f"🟢 {int(tgt)}% On Target (12h)")
+            if low > 5: vectors.append(f"🔴 {int(low)}% BG Low (12h)")
+            elif high > 15: vectors.append(f"🔴 {int(high)}% BG High (12h)")
+            elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (12h)")
+            else: vectors.append(f"🟢 {int(tgt)}% BG On Target (12h)")
 
+        # External Vectors
         for p in raw_reason.split("|"):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
@@ -136,7 +140,6 @@ with st.container(border=True):
     
     with hc2:
         with st.popover("🎙️ Smart Companion", use_container_width=True):
-            # DYNAMIC UI: Hide inputs if result is already rendered
             if st.session_state.get("journal_history"):
                 st.success("✅ Analysis complete! View your insights below.")
                 if st.button("Log Another Note", key="reset_journal_pop", use_container_width=True):
@@ -144,12 +147,21 @@ with st.container(border=True):
                     st.rerun()
             else:
                 st.caption("Tap the mic or type a note. The AI will correlate your state with live telemetry.")
-                audio_bytes = audio_recorder(text="Record Voice Note", recording_color="#ED8796", neutral_color="#8B5CF6", icon_size="2x")
                 
-                # Audio Note Override Logic
-                if audio_bytes and hashlib.md5(audio_bytes).hexdigest() != st.session_state.get("last_audio_hash"):
-                    st.session_state.last_audio_hash = hashlib.md5(audio_bytes).hexdigest()
-                    st.warning("🎙️ **Audio Detected!** Native speech-to-text requires an OpenAI API key. For this MVP, please type your note into the text box below.")
+                # Prevent mic from loading until actively requested
+                if not st.session_state.mic_active:
+                    if st.button("🎙️ Enable Microphone", use_container_width=True):
+                        st.session_state.mic_active = True
+                        st.rerun()
+                else:
+                    audio_bytes = audio_recorder(text="Record Voice Note", recording_color="#ED8796", neutral_color="#8B5CF6", icon_size="2x")
+                    if st.button("❌ Close Mic", use_container_width=True):
+                        st.session_state.mic_active = False
+                        st.rerun()
+                        
+                    if audio_bytes and hashlib.md5(audio_bytes).hexdigest() != st.session_state.get("last_audio_hash"):
+                        st.session_state.last_audio_hash = hashlib.md5(audio_bytes).hexdigest()
+                        st.warning("🎙️ **Audio Detected!** Native speech-to-text requires an OpenAI API key. For this MVP, please type your note into the text box below.")
                 
                 st.divider()
                 with st.form("journal_form", clear_on_submit=True):
@@ -158,7 +170,6 @@ with st.container(border=True):
             
     with hc3:
         with st.popover("🍽️ Smart Meals", use_container_width=True):
-            # DYNAMIC UI: Hide camera if result is already rendered to save massive screen space
             if st.session_state.get("latest_meal_analysis"):
                 st.success("✅ Meal analyzed! View your clinical insights below.")
                 if st.button("Scan Another Meal", key="reset_meal_pop", use_container_width=True):
@@ -166,7 +177,18 @@ with st.container(border=True):
                     st.rerun()
             else:
                 st.caption("Snap a photo to estimate carbohydrates and metabolic impact.")
-                food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
+                
+                # Prevent camera from loading until actively requested
+                if not st.session_state.camera_active:
+                    if st.button("📸 Open Camera Scanner", use_container_width=True):
+                        st.session_state.camera_active = True
+                        st.rerun()
+                else:
+                    food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
+                    if st.button("❌ Close Camera", use_container_width=True):
+                        st.session_state.camera_active = False
+                        st.rerun()
+                        
                 st.divider()
                 with st.form("usda_search_form"):
                     db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa")
@@ -219,7 +241,8 @@ if 'text_submit' in locals() and text_submit and text_input:
             ctx = {"context": st.session_state.current_context, "meetings": meeting_count, "glucose": int(latest_bg['Glucose_Value']), "trend": latest_bg['Trend']}
             sys = f"You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. Correlate my text. Speak to me as 'you'. Return JSON: 'reply', 'summary', 'scores':{{'bio_strain', 'cog_load'}}, 'impact_prediction'."
             st.session_state.journal_history = [ask_claude(sys, [{"role": "user", "content": text_input}])]
-            st.rerun() # <--- Auto-collapses the popover UI instantly
+            st.session_state.mic_active = False # Cleanup state
+            st.rerun() 
         except Exception as e: st.error(f"Failed: {e}")
 
 if 'food_image' in locals() and food_image is not None:
@@ -232,7 +255,8 @@ if 'food_image' in locals() and food_image is not None:
                 sys = "You are my elite clinical nutritionist. Speak as 'you'. Return JSON: 'food_identified', 'estimated_carbs_g', 'glycemic_index', 'analysis'."
                 meal_data = ask_claude(sys, [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}, {"type": "text", "text": "Analyze this meal for T1D."}]}])
                 meal_data["source"] = "📸 Vision Estimate"; st.session_state.latest_meal_analysis = meal_data
-                st.rerun() # <--- Auto-collapses the camera UI instantly
+                st.session_state.camera_active = False # Cleanup state
+                st.rerun() 
             except Exception as e: st.error(f"Failed: {e}")
 
 if 'db_search_submit' in locals() and db_search_submit and db_search_query:
@@ -245,7 +269,8 @@ if 'db_search_submit' in locals() and db_search_submit and db_search_query:
                 sys = f"You are my clinical nutritionist. I am querying {res['foods'][0].get('description')}. Macros per 100g: Carbs {c}g, Protein {p}g, Fat {f}g. Return JSON: 'food_identified', 'estimated_carbs_g', 'glycemic_index', 'analysis'."
                 meal_data = ask_claude(sys, [{"role": "user", "content": "Analyze macros."}])
                 meal_data["source"] = "🔍 USDA Verified (per 100g)"; st.session_state.latest_meal_analysis = meal_data
-                st.rerun() # <--- Auto-collapses the popover UI instantly
+                st.session_state.camera_active = False # Cleanup state
+                st.rerun()
             else: st.warning("No matches found.")
         except Exception as e: st.error(f"Failed: {e}")
 
