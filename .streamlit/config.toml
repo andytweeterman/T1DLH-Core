@@ -1,2 +1,3 @@
-# "system" tells the app to exactly match the OS settings of the device viewing it
-base="system"
+# Empty config. 
+# By removing the [theme] block entirely, Streamlit will automatically 
+# default to your device's native Light Mode or Dark Mode settings!
