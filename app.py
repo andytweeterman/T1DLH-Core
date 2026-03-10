@@ -3,6 +3,7 @@ import secrets
 import streamlit as st
 import plotly.graph_objects as go
 import anthropic
+import styles
 import logic
 import json
 import whoop
@@ -22,59 +23,26 @@ import tempfile
 # 1. SETUP & CLAUDE WRAPPER 
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_sidebar_state="collapsed")
+styles.apply_theme()
+styles.inject_custom_css()
 
-FOOTER_HTML = """
-<div style='text-align: center; color: gray; margin-top: 50px; font-size: 12px; opacity: 0.7;'>
-    TLDH Core Architecture | Agentic Risk Engine<br>
-    <span style='font-size: 10px;'>Disclaimer: This is a wellness tool and should not be used to make medical decisions such as insulin dosing.</span>
-</div>
-"""
-
+# UI POLISH: Shadows, Alignment Spacers, and Premium Button CSS
 st.markdown("""
     <style>
-    /* Primary Buttons (Gradients) */
-    div[data-testid="stButton"] > button[kind="primary"] { 
-        background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; 
-        color: white !important; border: none !important; 
-        border-radius: 12px !important; font-weight: 700 !important; 
-        transition: all 0.3s ease !important; letter-spacing: 0.5px !important; 
-        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3) !important;
-    }
-    div[data-testid="stButton"] > button[kind="primary"]:hover { 
-        box-shadow: 0 6px 16px rgba(139, 92, 246, 0.5) !important; transform: translateY(-2px); 
-    }
+    /* Global Button Styling with Drop Shadows */
+    div[data-testid="stButton"] > button { border-radius: 50px !important; font-weight: 700 !important; transition: all 0.3s ease !important; letter-spacing: 0.5px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important; }
+    div[data-testid="stButton"] > button[kind="primary"] { background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; color: white !important; border: none !important; }
+    div[data-testid="stButton"] > button[kind="primary"]:hover { box-shadow: 0 6px 15px rgba(139, 92, 246, 0.4) !important; transform: translateY(-2px); }
+    div[data-testid="stButton"] > button[kind="secondary"] { border: 1px solid rgba(139, 92, 246, 0.3) !important; background-color: var(--secondary-background-color) !important; }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover { border-color: #8B5CF6 !important; color: #8B5CF6 !important; transform: translateY(-2px); }
     
-    /* Secondary Buttons / Tabs (Day/Night Adaptable) */
-    div[data-testid="stButton"] > button[kind="secondary"] { 
-        background-color: var(--secondary-background-color) !important; 
-        border: 1px solid rgba(128, 128, 128, 0.2) !important; 
-        color: var(--text-color) !important;
-        border-radius: 12px !important;
-        font-weight: 600 !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-        opacity: 1.0 !important;
-        transition: all 0.3s ease !important;
-    }
-    div[data-testid="stButton"] > button[kind="secondary"]:hover { 
-        border-color: #8B5CF6 !important; 
-        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15) !important;
-        color: #8B5CF6 !important; 
-    }
-
-    /* Premium Popover Buttons (Day/Night Adaptable) */
-    div[data-testid="stPopover"] > button {
-        background-color: var(--secondary-background-color) !important;
-        border: 1px solid rgba(128, 128, 128, 0.2) !important;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
-        border-radius: 16px !important;
-        color: var(--text-color) !important;
-        transition: all 0.3s ease !important;
-        font-weight: 700 !important;
-    }
-    div[data-testid="stPopover"] > button:hover {
-        box-shadow: 0 6px 20px rgba(139, 92, 246, 0.2) !important;
-        transform: translateY(-2px);
-        border-color: rgba(139, 92, 246, 0.6) !important;
+    /* Popover Button specific shadow to make them pop */
+    div[data-testid="stPopover"] > button { border-radius: 50px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important; border: 1px solid rgba(139, 92, 246, 0.2) !important; transition: all 0.3s ease !important;}
+    div[data-testid="stPopover"] > button:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(139, 92, 246, 0.25) !important; border-color: #8B5CF6 !important; }
+    
+    /* Dynamic Alignment Spacer (Only shows on Desktop) */
+    @media (max-width: 768px) {
+        .desktop-spacer { display: none !important; }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -104,36 +72,14 @@ def get_ai_chart_summary(chart_type, time_window, metrics, active_memory=""):
     sys_prompt = f"""You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. 
     Metrics: {metrics}. 
     Recent Events Context: {active_memory}. 
-    CRITICAL INSTRUCTIONS: 
-    1. Be forgiving and realistic about blood sugar management. The target range is 70-160 mg/dL. Occasional spikes up to 200 mg/dL are a completely normal part of living with T1D. Do NOT scold me or use alarmist language for imperfect numbers.
-    2. If the Recent Events explain the current glucose trend (e.g., a logged meal causing a spike, or recent exercise causing a drop), you MUST explicitly acknowledge that connection. 
-    Provide a 2-sentence highly actionable and encouraging synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."""
+    Clinical Guardrails: Target range is 70-180 mg/dL. Any spike above 180 is considered high and requires attention.
+    CRITICAL INSTRUCTION: If the Recent Events explain the current glucose trend (e.g., a recently logged meal causing a spike, or recent exercise/strain causing a drop), you MUST explicitly acknowledge that connection. 
+    Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."""
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend based on my recent context."}], max_tokens=150, parse_json=False)
 
 def render_adaptive_schedule_card(title, value):
-    card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 16px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
-    return f"<div style='{card_css}'><div style='color: gray; font-size:0.85rem; font-weight:700; text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
-
-def local_get_driver_pill_html(t):
-    """Custom grid-based symmetrical pill renderer"""
-    if not t: return "<div></div>" # Empty placeholder to maintain symmetry
-    if "🔴" in t or "🔥" in t or "❄️" in t or "🤒" in t:
-        bg, text, border = "#FFD1D9", "#8A001A", "#FFB3C1" 
-    elif "🟡" in t or "⚡" in t or "💤" in t or "🧘‍♂️" in t or "🏃‍♂️" in t:
-        bg, text, border = "#FFEDB3", "#805500", "#FFDF80"
-    elif "🔋" in t or "RECOVERY" in t.upper() or "RESTORE" in t.upper():
-        bg, text, border = "#C2E0FF", "#004085", "#99CCFF"
-    elif "🟢" in t or "☁️" in t:
-        bg, text, border = "#D1F4D9", "#00591A", "#A3E9B3"
-    else:
-        bg, text, border = "#E1D4FA", "#330099", "#C4B5F5"
-    
-    friendly_text = t.replace("BENIGN ENVIRONMENT", "CLEAR WEATHER").replace("LOAD", "CALENDAR LOAD").replace("NOMINAL", "BIOMETRICS NOMINAL").title()
-    friendly_text = friendly_text.replace("12H", "12h").replace("3H", "3h").replace("Bg", "BG").replace("Mode", "MODE")
-    friendly_text = re.sub(r'(\d+)H', r'\1h', friendly_text)
-    friendly_text = re.sub(r'(\d+)M', r'\1m', friendly_text).replace(" Left)", " left)")
-    
-    return f"<div style='background-color:{bg}; color:{text}; border:1px solid {border}; border-radius: 12px; padding: 10px 4px; font-size: 0.75rem; font-weight: 800; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center; height: 100%; line-height: 1.2;'>{friendly_text}</div>"
+    card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 20px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
+    return f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.85rem;font-weight:700;text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
 
 # --- DYNAMIC TONE ENGINE ---
 def get_claude_tone():
@@ -143,7 +89,7 @@ def get_claude_tone():
     elif ctx == "Recovery": return "calm, analytical, and restorative. Focus on refueling, managing post-exercise spikes/drops, and optimizing sleep."
     elif ctx == "Sick": return "compassionate, cautious, and clinically protective. Focus on hydration, gentle recovery, and fighting resistance."
     elif ctx == "Travel": return "vigilant, organized, and proactive. Focus on logistical stability."
-    else: return "warm, personal, highly compassionate, and actionable like an elite clinical coach."
+    else: return "warm, personal, and highly actionable like an elite clinical coach."
 
 def get_time_remaining(end_time):
     if not end_time: return ""
@@ -180,6 +126,7 @@ if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts
 if "_toast" not in st.session_state: st.session_state._toast = None
 if "active_view" not in st.session_state: st.session_state.active_view = None
 
+# Consume transient toast message
 if st.session_state._toast:
     st.toast(st.session_state._toast)
     st.session_state._toast = None
@@ -190,9 +137,9 @@ def log_event(event_type, description):
         "type": event_type,
         "desc": description
     })
-    st.session_state.event_log = st.session_state.event_log[-15:] 
+    st.session_state.event_log = st.session_state.event_log[-15:] # Keep last 15
 
-# Time-Decaying State Check
+# Time-Decaying State Check & Recovery Handoff
 if st.session_state.context_end_time and datetime.now() > st.session_state.context_end_time:
     if st.session_state.current_context == "Exercise":
         st.session_state.current_context = "Recovery"
@@ -266,13 +213,11 @@ context_memory_string = " | ".join(active_memory_list) if active_memory_list els
 # -----------------------------------------------------------------------------
 # 4. AUTO-DETECT INTERCEPTS & UI HEADERS
 # -----------------------------------------------------------------------------
+# POLISHED HEADER: Glass-morphic gradient container
 st.markdown(f"""
-    <div style="margin-top: 10px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
-        <span style="font-size: 46px;">🧠</span>
-        <div>
-            <div style="font-size: 32px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">Total Life Download Hub</div>
-            <div style="color: gray; font-weight: 600; font-size: 1.1rem; margin-top: -3px;">Agentic Risk Management Engine</div>
-        </div>
+    <div style="margin-top: 10px; margin-bottom: 25px; padding: 24px 30px; background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(109,40,217,0.03)); border: 1px solid rgba(139,92,246,0.2); border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.04);">
+        <div style="font-size: 34px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">Total Life Download Hub</div>
+        <div style="color: var(--text-secondary); font-weight: 600; font-size: 1.15rem; margin-top: 4px; letter-spacing: 0.5px;">Agentic Risk Management Engine</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -280,7 +225,7 @@ st.markdown(f"""
 if st.session_state.current_context == "Normal":
     auto_mode, auto_dur, auto_reason = None, 0, ""
     
-    if len(full_data) >= 6 and all(full_data.tail(6)['Glucose_Value'] > 180):
+    if len(full_data) >= 6 and all(full_data.tail(6)['Glucose_Value'] > 160):
         auto_mode, auto_dur, auto_reason = "Stressed", 3, "Sustained elevated glucose detected."
     elif w_strain > 14.0 and latest_bg['Trend'] in ["Falling", "Falling Fast"]:
         auto_mode, auto_dur, auto_reason = "Recovery", 2, "High Whoop strain detected with dropping glucose (Post-Workout)."
@@ -323,7 +268,7 @@ with st.container(border=True):
     hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
     
     with hc1:
-        st.markdown("<p style='font-weight: 800; color: gray; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
         vectors = []
         
         if st.session_state.current_context != "Normal":
@@ -331,15 +276,9 @@ with st.container(border=True):
             icon = {"Stressed": "🧘‍♂️", "Exercise": "🏃‍♂️", "Recovery": "🔋", "Sick": "🤒", "Project": "🧠", "Travel": "✈️"}.get(st.session_state.current_context, "🟣")
             vectors.append(f"{icon} {st.session_state.current_context} ({rem})")
 
-        # Updated TIR Logic (More forgiving ranges)
         tir_df = full_data.tail(36)
         if len(tir_df) > 0:
-            low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [
-                tir_df['Glucose_Value'] < 70, 
-                (tir_df['Glucose_Value'] >= 70) & (tir_df['Glucose_Value'] <= 160), 
-                (tir_df['Glucose_Value'] > 160) & (tir_df['Glucose_Value'] <= 200), 
-                tir_df['Glucose_Value'] > 200
-            ]]
+            low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
             if low > 5: vectors.append(f"🔴 {int(low)}% BG Low (3h)")
             elif high > 15: vectors.append(f"🔴 {int(high)}% BG High (3h)")
             elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (3h)")
@@ -349,22 +288,18 @@ with st.container(border=True):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
         
-        # UI POLISH: Render as a 4-column symmetrical grid
-        tags_html = "<div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; margin-bottom: 15px;'>"
-        padded_vectors = vectors[:4] + [""] * (4 - len(vectors[:4]))
-        for t in padded_vectors:
-            tags_html += local_get_driver_pill_html(t)
-        tags_html += "</div>"
-        
+        tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
         st.markdown(tags_html, unsafe_allow_html=True)
     
     with hc2:
+        st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
         if st.session_state.get("journal_history"):
             if st.button("🎙️ Log Another Note", use_container_width=True):
                 st.session_state.journal_history = []
                 st.rerun()
         else:
             with st.popover("🎙️ Companion", use_container_width=True):
+                if st.button("🔽 Close Panel", key="close_comp_panel", use_container_width=True): st.rerun() # Mobile UX Fix
                 st.caption("Tap the mic or type a note. The AI will correlate your state with live telemetry.")
                 if not st.session_state.mic_active:
                     if st.button("🎙️ Enable Microphone", use_container_width=True):
@@ -372,7 +307,7 @@ with st.container(border=True):
                         st.rerun()
                 else:
                     audio_bytes = audio_recorder(text="Record Voice Note", recording_color="#ED8796", neutral_color="#8B5CF6", icon_size="2x")
-                    if st.button("❌ Close Mic", use_container_width=True):
+                    if st.button("❌ Disable Mic", use_container_width=True):
                         st.session_state.mic_active = False; st.rerun()
                     if audio_bytes and hashlib.md5(audio_bytes).hexdigest() != st.session_state.get("last_audio_hash"):
                         st.session_state.last_audio_hash = hashlib.md5(audio_bytes).hexdigest()
@@ -401,12 +336,14 @@ with st.container(border=True):
                     text_submit = True
             
     with hc3:
+        st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
         if st.session_state.get("latest_meal_analysis"):
             if st.button("🍽️ Scan Another Meal", use_container_width=True):
                 st.session_state.latest_meal_analysis = None
                 st.rerun()
         else:
             with st.popover("🍽️ Meals", use_container_width=True):
+                if st.button("🔽 Close Panel", key="close_meals_panel", use_container_width=True): st.rerun() # Mobile UX Fix
                 st.caption("Snap a photo to estimate carbohydrates and metabolic impact.")
                 if not st.session_state.camera_active:
                     if st.button("📸 Open Camera Scanner", use_container_width=True):
@@ -414,7 +351,7 @@ with st.container(border=True):
                         st.rerun()
                 else:
                     food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
-                    if st.button("❌ Close Camera", use_container_width=True):
+                    if st.button("❌ Disable Camera", use_container_width=True):
                         st.session_state.camera_active = False; st.rerun()
                         
                 st.divider()
@@ -423,7 +360,9 @@ with st.container(border=True):
                     db_search_submit = st.form_submit_button("Lookup Exact Macros", use_container_width=True)
                 
     with hc4:
+        st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
         with st.popover("☰ Menu", use_container_width=True):
+            if st.button("🔽 Close Panel", key="close_menu_panel", use_container_width=True): st.rerun() # Mobile UX Fix
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
                 new_ctx = st.selectbox("Force Context Mode:", ["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
@@ -495,6 +434,7 @@ if 'text_submit' in locals() and text_submit and text_input:
             ctx = {"context": st.session_state.current_context, "meetings": meeting_count, "glucose": int(latest_bg['Glucose_Value']), "trend": latest_bg['Trend']}
             sys = f"""You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. 
             Active Memory Context: {context_memory_string}.
+            Clinical Guardrails: Target range is 70-180 mg/dL. Any spike above 180 is considered high and requires attention.
             Correlate my text with the telemetry and memory. 
             Speak to me as 'you'. Tone should be {get_claude_tone()}. NEVER refer to me as "the patient".
             Return ONLY a valid JSON object with EXACTLY these keys:
@@ -586,18 +526,20 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-v_cols = st.columns(5)
-for i, view in enumerate(["Home", "Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
+v_cols = st.columns(4)
+for i, view in enumerate(["Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
     with v_cols[i]:
-        # 'Home' is active if active_view is None
-        is_active = (st.session_state.active_view == view) or (view == "Home" and st.session_state.active_view is None)
+        is_active = (st.session_state.active_view == view)
         if st.button(view, use_container_width=True, type="primary" if is_active else "secondary"):
-            st.session_state.active_view = None if view == "Home" else view
+            st.session_state.active_view = None if is_active else view
             st.rerun()
 st.markdown("---")
 
 # DYNAMIC LANDING DASHBOARD (Zero API Cost)
 if st.session_state.active_view is None:
+    st.markdown("### 📊 Live System Overview")
+    st.caption("Select a tab above for deep AI synthesis, or monitor baseline telemetry below.")
+    
     c1, c2, c3 = st.columns(3)
     delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
     delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
@@ -620,7 +562,8 @@ elif st.session_state.active_view == "Daily Briefing":
             sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
             Metrics: {st.session_state.current_context} Context, {meeting_count} meetings today, Whoop Recovery: {w_rec}%, Current BG: {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). 
             Active Memory Context: {context_memory_string}.
-            CRITICAL: Be forgiving and realistic about blood sugar. Target is 70-160 mg/dL. Spikes up to 200 mg/dL are normal. If the Active Memory explains the current glucose trend, explicitly acknowledge this.
+            Clinical Guardrails: Target range is 70-180 mg/dL. Any spike above 180 is considered high and requires attention.
+            CRITICAL: If the Active Memory explains the current glucose trend, explicitly acknowledge this.
             Synthesize this into a proactive daily briefing. Focus on cognitive load management and metabolic forecasting. Speak directly to me using 'you'.
             Return ONLY a valid JSON object with these EXACT keys: 
             'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop, BG, and Memory), 
@@ -649,7 +592,6 @@ elif st.session_state.active_view == "Total Life Metrics":
     tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
-    st.markdown("##### 🩸 Real Time Blood Sugar")
     fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
@@ -671,6 +613,7 @@ elif st.session_state.active_view == "Schedule":
 
 elif st.session_state.active_view == "Sleep":
     if st.session_state.whoop_token and whoop_metrics:
+        st.markdown("##### 💤 Sleep Metrics")
         st.metric("Sleep Perf", f"{w_sleep}%")
         
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
@@ -689,4 +632,4 @@ elif st.session_state.active_view == "Sleep":
             st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
-st.markdown(FOOTER_HTML, unsafe_allow_html=True)
+st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
