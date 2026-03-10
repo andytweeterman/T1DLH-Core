@@ -211,12 +211,18 @@ if st.session_state.get("latest_meal_analysis"):
     meal_mem = st.session_state.latest_meal_analysis
     raw_c = meal_mem.get('estimated_carbs_g', 0)
     display_c = raw_c.get('total_estimated', raw_c.get('total', 0)) if isinstance(raw_c, dict) else raw_c
-    active_memory_list.append(f"Recently logged a meal: {meal_mem.get('food_identified', 'Food')} ({display_c}g carbs, {meal_mem.get('glycemic_index', 'Unknown')} GI).")
+    active_memory_list.append(f"Recently logged a meal via camera: {meal_mem.get('food_identified', 'Food')} ({display_c}g carbs, {meal_mem.get('glycemic_index', 'Unknown')} GI).")
 
 if st.session_state.current_context in ["Exercise", "Recovery"]:
     active_memory_list.append(f"Currently in {st.session_state.current_context} mode. High physiological load expected.")
 elif w_strain > 12.0:
     active_memory_list.append(f"Notable daily Whoop strain recorded today: {w_strain}.")
+
+# Tie recent Journal entries directly into Claude's memory
+recent_journals = [e for e in st.session_state.event_log if e['type'] in ["🍽️ Meal", "💊 Medication", "🏃‍♂️ Exercise", "📝 Other"]]
+if recent_journals:
+    latest_journal = recent_journals[-1]
+    active_memory_list.append(f"Recent user journal entry ({latest_journal['type']}): {latest_journal['desc']}")
 
 context_memory_string = " | ".join(active_memory_list) if active_memory_list else "No active external events logged."
 
@@ -370,20 +376,32 @@ with st.container(border=True):
                 
     with hc4:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
-        with st.popover("📅 Events", use_container_width=True):
-            st.caption("Quickly log a daily event.")
+        with st.popover("📓 Journal", use_container_width=True):
+            st.caption("Log a daily event, meal, or brain dump.")
             with st.form("manual_event_form", clear_on_submit=True):
-                ev_type = st.selectbox("Type", ["Meal", "Medication", "Exercise", "Other"], label_visibility="collapsed")
-                ev_desc = st.text_input("Description", placeholder="E.g., 15u Humalog")
-                if st.form_submit_button("Log Event", use_container_width=True):
+                ev_type = st.selectbox("Type", ["🍽️ Meal", "💊 Medication", "🏃‍♂️ Exercise", "📝 Other"], label_visibility="collapsed")
+                ev_desc = st.text_area("Context", placeholder="E.g., I had a cookie at lunch, it had a lot more carbs than I was expecting...", height=100)
+                if st.form_submit_button("Log Entry", use_container_width=True):
                     if ev_desc:
-                        log_event(f"📝 {ev_type}", ev_desc)
-                        st.session_state._toast = f"✅ {ev_type} logged!"
+                        log_event(ev_type, ev_desc)
+                        st.session_state._toast = f"✅ {ev_type.split(' ')[1]} logged to memory!"
                         st.rerun()
                         
     with hc5:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
         with st.popover("☰ Menu", use_container_width=True):
+            if st.button("🔽 Close Panel", key="close_menu_panel", use_container_width=True): st.rerun() # Mobile UX Fix
+            
+            st.markdown("##### 📖 Log Book")
+            with st.container(border=True):
+                if not st.session_state.event_log:
+                    st.caption("No entries logged yet today.")
+                else:
+                    for event in reversed(st.session_state.event_log):
+                        st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray; font-size:0.85em;'>{event['desc']}</span>", unsafe_allow_html=True)
+                        
+            st.divider()
+            
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
                 new_ctx = st.selectbox("Force Context Mode:", ["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
@@ -415,14 +433,6 @@ with st.container(border=True):
                         st.cache_data.clear(); st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("**📱 Native Calendar (Mock)**")
-            cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
-            if cal_file:
-                mc, sm = calendar_sync.analyze_local_calendar(cal_file.getvalue().decode("utf-8"))
-                st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
-                st.success(f"Local Sync: {mc} events loaded.")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**⚡ Whoop Telemetry**")
             if not st.session_state.whoop_token:
                 oauth_state = secrets.token_urlsafe(16)
@@ -435,6 +445,14 @@ with st.container(border=True):
                     st.session_state.whoop_token = whoop.get_valid_access_token()
                     whoop.fetch_whoop_recovery.clear()
                     st.rerun() 
+                    
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("**📱 Native Calendar (Mock)**")
+            cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
+            if cal_file:
+                mc, sm = calendar_sync.analyze_local_calendar(cal_file.getvalue().decode("utf-8"))
+                st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
+                st.success(f"Local Sync: {mc} events loaded.")
 
 st.divider()
 
