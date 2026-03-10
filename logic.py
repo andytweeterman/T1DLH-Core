@@ -56,7 +56,8 @@ def fetch_health_data():
     times = pd.date_range(end=now, periods=288, freq='5min')
     base = 120 + 30 * np.sin(np.linspace(0, 3*np.pi, 288))
     noise = np.random.normal(0, 4, 288)
-    glucose = np.clip(base + noise, 65, 220).astype(int)
+    # CLINICAL TWEAK: Lowered artificial ceiling from 220 to 195 for realistic T1D charting
+    glucose = np.clip(base + noise, 65, 195).astype(int)
     return pd.DataFrame({'Timestamp': times, 'Glucose_Value': glucose})
 
 def apply_context_modifiers(df, context):
@@ -75,7 +76,8 @@ def apply_context_modifiers(df, context):
 
     diffs = df['Glucose_Value'].diff().fillna(0)
     df['Trend'] = np.where(diffs > 3, "Rising", np.where(diffs < -3, "Falling", "Steady"))
-    df['Glucose_Value'] = np.clip(df['Glucose_Value'], 65, 220)
+    # CLINICAL TWEAK: Lowered artificial ceiling from 220 to 195
+    df['Glucose_Value'] = np.clip(df['Glucose_Value'], 65, 195)
     return df
 
 # -----------------------------------------------------------------------------
