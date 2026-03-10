@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 
 FOOTER_HTML = """
 <div style='text-align: center; color: var(--text-secondary); margin-top: 50px; font-size: 12px; opacity: 0.7;'>
@@ -44,11 +45,12 @@ def inject_custom_css():
 
 def get_driver_pill_html(t):
     """Parses a driver string and returns the styled HTML pill."""
-    # Determine the color theme based on the severity/icon
-    if "🔴" in t or "🔥" in t or "❄️" in t:
+    if "🔴" in t or "🔥" in t or "❄️" in t or "🤒" in t:
         bg, text, border = "#FFD1D9", "#8A001A", "#FFB3C1" 
-    elif "🟡" in t or "⚡" in t or "💤" in t:
+    elif "🟡" in t or "⚡" in t or "💤" in t or "🧘‍♂️" in t or "🏃‍♂️" in t:
         bg, text, border = "#FFEDB3", "#805500", "#FFDF80"
+    elif "🔋" in t or "RECOVERY" in t.upper() or "RESTORE" in t.upper():
+        bg, text, border = "#C2E0FF", "#004085", "#99CCFF" # Recovery Blue
     elif "🟢" in t or "☁️" in t:
         bg, text, border = "#D1F4D9", "#00591A", "#A3E9B3"
     else:
@@ -60,8 +62,12 @@ def get_driver_pill_html(t):
     friendly_text = friendly_text.replace("NOMINAL", "BIOMETRICS NOMINAL")
     friendly_text = friendly_text.title()
     
-    # Title casing capitalizes the 'h' in 12h, so we revert just that part
+    # Text formatting cleanup for acroynms and timers
     friendly_text = friendly_text.replace("12H", "12h")
     friendly_text = friendly_text.replace("Bg", "BG")
+    friendly_text = friendly_text.replace("Mode", "MODE")
+    friendly_text = re.sub(r'(\d+)H', r'\1h', friendly_text)
+    friendly_text = re.sub(r'(\d+)M', r'\1m', friendly_text)
+    friendly_text = friendly_text.replace(" Left)", " left)")
     
     return f"<div class='driver-pill' style='background-color:{bg}; color:{text}; border:1px solid {border};'>{friendly_text}</div>"
