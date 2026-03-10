@@ -57,9 +57,13 @@ def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=Tru
             raise Exception(f"**API Account Locked:** Your Anthropic account cannot access '{ACTIVE_MODEL}'. You must add at least $5 in prepaid credits at console.anthropic.com/settings/billing to unlock API access to Claude 3 models.")
         raise e
 
-def get_ai_chart_summary(chart_type, time_window, metrics):
-    sys_prompt = f"You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
-    return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend."}], max_tokens=150, parse_json=False)
+def get_ai_chart_summary(chart_type, time_window, metrics, active_memory=""):
+    sys_prompt = f"""You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. 
+    Metrics: {metrics}. 
+    Recent Events Context: {active_memory}. 
+    CRITICAL INSTRUCTION: If the Recent Events explain the current glucose trend (e.g., a recently logged meal causing a spike, or recent exercise/strain causing a drop), you MUST explicitly acknowledge that connection. 
+    Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."""
+    return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend based on my recent context."}], max_tokens=150, parse_json=False)
 
 def render_adaptive_schedule_card(title, value):
     card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 20px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
@@ -156,7 +160,29 @@ except Exception as e:
     st.error(f"Data loading failed: {e}"); st.stop()
 
 # -----------------------------------------------------------------------------
-# 3. AUTO-DETECT INTERCEPTS & UI HEADERS
+# 3. BUILD ACTIVE MEMORY (Context Injector)
+# -----------------------------------------------------------------------------
+# This parses recent app interactions to give Claude "short term memory" of your actions
+active_memory_list = []
+
+# Check for recently logged meals
+if st.session_state.get("latest_meal_analysis"):
+    meal_mem = st.session_state.latest_meal_analysis
+    raw_c = meal_mem.get('estimated_carbs_g', 0)
+    display_c = raw_c.get('total_estimated', raw_c.get('total', 0)) if isinstance(raw_c, dict) else raw_c
+    active_memory_list.append(f"Recently logged a meal: {meal_mem.get('food_identified', 'Food')} ({display_c}g carbs, {meal_mem.get('glycemic_index', 'Unknown')} GI).")
+
+# Check for active exercise/recovery load
+if st.session_state.current_context in ["Exercise", "Recovery"]:
+    active_memory_list.append(f"Currently in {st.session_state.current_context} mode. High physiological load expected.")
+elif w_strain > 12.0:
+    active_memory_list.append(f"Notable daily Whoop strain recorded today: {w_strain}.")
+
+context_memory_string = " | ".join(active_memory_list) if active_memory_list else "No active external events logged."
+
+
+# -----------------------------------------------------------------------------
+# 4. AUTO-DETECT INTERCEPTS & UI HEADERS
 # -----------------------------------------------------------------------------
 st.markdown(f"""
     <div style="margin-top: 10px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
@@ -257,8 +283,6 @@ with st.container(border=True):
                                         temp_path = fp.name
                                     with open(temp_path, "rb") as af:
                                         transcript = openai_client.audio.transcriptions.create(model="whisper-1", file=af)
-                                    
-                                    # Seamlessly hand off the transcription to the NLP event processor!
                                     text_input = transcript.text
                                     text_submit = True 
                                 except Exception as e:
@@ -276,7 +300,6 @@ with st.container(border=True):
                     text_submit = True
             
     with hc3:
-        # UX FIX: Conditionally render the button INSTEAD of the popover if a meal is active
         if st.session_state.get("latest_meal_analysis"):
             if st.button("🍽️ Scan Another Meal", use_container_width=True):
                 st.session_state.latest_meal_analysis = None
@@ -357,21 +380,25 @@ with st.container(border=True):
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 4. EVENT PROCESSORS (SEMANTIC NLP DETECT)
+# 5. EVENT PROCESSORS (SEMANTIC NLP DETECT)
 # -----------------------------------------------------------------------------
 if 'text_submit' in locals() and text_submit and text_input:
     with st.spinner("Correlating subjective report with objective telemetry..."):
         try:
             ctx = {"context": st.session_state.current_context, "meetings": meeting_count, "glucose": int(latest_bg['Glucose_Value']), "trend": latest_bg['Trend']}
-            sys = f"""You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. Correlate my text. 
+            
+            # MEMORY INJECTION
+            sys = f"""You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. 
+            Active Memory Context: {context_memory_string}.
+            Correlate my text with the telemetry and memory. 
             Speak to me as 'you'. Tone should be {get_claude_tone()}. NEVER refer to me as "the patient".
-            Return ONLY a valid JSON object with EXACTLY these keys (Strict Strings/Integers/Floats):
+            Return ONLY a valid JSON object with EXACTLY these keys:
             - "reply": "A contextual response."
             - "summary": "3 words."
             - "scores": {{"bio_strain": 5, "cog_load": 5}}
             - "impact_prediction": "1-sentence prediction."
             - "suggested_mode": "Exercise", "Recovery", "Stressed", "Sick", "Project", "Travel", or "Normal" (Detect from my text)
-            - "suggested_duration_hours": 1.5 (Float representing how long the mode should last based on context)"""
+            - "suggested_duration_hours": 1.5"""
             st.session_state.journal_history = [ask_claude(sys, [{"role": "user", "content": text_input}])]
             st.session_state.mic_active = False 
             st.rerun() 
@@ -439,7 +466,7 @@ if st.session_state.get("latest_meal_analysis"):
     st.divider()
 
 # -----------------------------------------------------------------------------
-# 5. NAVIGATION & RENDER VIEWS
+# 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state: st.session_state.active_view = "Daily Briefing"
 v_cols = st.columns(4)
@@ -451,11 +478,14 @@ st.markdown("---")
 if st.session_state.active_view == "Daily Briefing":
     with st.spinner("Compiling Executive Briefing..."):
         try:
+            # MEMORY INJECTION
             sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
             Metrics: {st.session_state.current_context} Context, {meeting_count} meetings today, Whoop Recovery: {w_rec}%, Current BG: {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). 
+            Active Memory Context: {context_memory_string}.
+            CRITICAL: If the Active Memory explains the current glucose trend (e.g., a logged meal causing a spike, or exercise causing a drop), explicitly acknowledge this.
             Synthesize this into a proactive daily briefing. Focus on cognitive load management and metabolic forecasting. Speak directly to me using 'you'.
             Return ONLY a valid JSON object with these EXACT keys: 
-            'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop & BG), 
+            'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop, BG, and Memory), 
             'schedule_friction' (how my calendar density impacts my glucose management today), 
             'action_directive' (one clear, proactive step to take right now)."""
             
@@ -490,7 +520,8 @@ elif st.session_state.active_view == "Total Life Metrics":
         std_val = p_df['Glucose_Value'].std()
         safe_std = int(std_val) if pd.notna(std_val) else 0
         metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
-        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str)}")
+        # MEMORY INJECTION
+        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
@@ -518,7 +549,8 @@ elif st.session_state.active_view == "Sleep":
             std_val = o_df['Glucose_Value'].std()
             safe_std = int(std_val) if pd.notna(std_val) else 0
             metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
-            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str)}")
+            # MEMORY INJECTION
+            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
