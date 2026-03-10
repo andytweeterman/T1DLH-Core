@@ -81,8 +81,8 @@ def render_adaptive_schedule_card(title, value):
 # 2. STATE & DATA LOADING
 # -----------------------------------------------------------------------------
 if "current_context" not in st.session_state: st.session_state.current_context = "Normal"
-if "ns_url" not in st.session_state: st.session_state.ns_url = ""
-if "ns_token" not in st.session_state: st.session_state.ns_token = ""
+if "ns_url" not in st.session_state: st.session_state.ns_url = st.secrets.get("NIGHTSCOUT_URL", "")
+if "ns_token" not in st.session_state: st.session_state.ns_token = st.secrets.get("NIGHTSCOUT_TOKEN", "")
 if "whoop_token" not in st.session_state: st.session_state.whoop_token = whoop.get_valid_access_token()
 
 if "code" in st.query_params and not st.session_state.whoop_token:
