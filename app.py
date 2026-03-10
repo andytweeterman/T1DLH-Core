@@ -25,7 +25,8 @@ st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_s
 
 FOOTER_HTML = """
 <div style='text-align: center; color: gray; margin-top: 50px; font-size: 12px; opacity: 0.7;'>
-    TLDH Core Architecture | Agentic Risk Engine
+    TLDH Core Architecture | Agentic Risk Engine<br>
+    <span style='font-size: 10px;'>Disclaimer: This is a wellness tool and should not be used to make medical decisions such as insulin dosing.</span>
 </div>
 """
 
@@ -349,7 +350,7 @@ with st.container(border=True):
             if clean: vectors.append(html.escape(clean))
         
         # UI POLISH: Render as a 4-column symmetrical grid
-        tags_html = "<div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%;'>"
+        tags_html = "<div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; margin-bottom: 15px;'>"
         padded_vectors = vectors[:4] + [""] * (4 - len(vectors[:4]))
         for t in padded_vectors:
             tags_html += local_get_driver_pill_html(t)
@@ -648,7 +649,7 @@ elif st.session_state.active_view == "Total Life Metrics":
     tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
-    st.markdown("##### 🩸 Real time Blood Sugar")
+    st.markdown("##### 🩸 Real Time Blood Sugar")
     fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
