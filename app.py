@@ -206,15 +206,27 @@ with st.container(border=True):
             st.markdown("##### 🔌 Integrations")
             st.markdown("**🩸 Nightscout CGM Sync**")
             if st.session_state.ns_url:
-                st.success("🟢 Connected")
-                if st.button("Disconnect", key="dc_ns"):
-                    st.session_state.ns_url = ""; st.session_state.ns_token = ""; st.rerun()
+                # DYNAMIC UI: Validate if the connection is live or if it timed out to the simulator
+                if is_real_cgm:
+                    st.success("🟢 Connected & Streaming Live")
+                else:
+                    st.error("🔴 Connection Failed. (Simulated Data)")
+                    st.caption("Your Nightscout server may have been sleeping. Try reconnecting to force a fresh ping.")
+                    
+                if st.button("Disconnect / Reconnect", key="dc_ns"):
+                    st.session_state.ns_url = ""
+                    st.session_state.ns_token = ""
+                    st.cache_data.clear() # CACHE BUSTING
+                    st.rerun()
             else:
                 with st.form("ns_form"):
                     ns_url_input = st.text_input("Nightscout URL", placeholder="https://your-name.herokuapp.com")
                     ns_token_input = st.text_input("API Token (Optional)", type="password", placeholder="token-123")
                     if st.form_submit_button("Connect", use_container_width=True):
-                        st.session_state.ns_url = ns_url_input; st.session_state.ns_token = ns_token_input; st.rerun()
+                        st.session_state.ns_url = ns_url_input
+                        st.session_state.ns_token = ns_token_input
+                        st.cache_data.clear() # CACHE BUSTING: Forces the backend to ignore the old failure and try pinging Nightscout again
+                        st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**📱 Native Calendar (Mock)**")
