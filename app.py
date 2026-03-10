@@ -15,6 +15,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
+from openai import OpenAI
+import tempfile
 
 # -----------------------------------------------------------------------------
 # 1. SETUP & CLAUDE WRAPPER 
@@ -38,6 +40,11 @@ try:
     ACTIVE_MODEL = 'claude-haiku-4-5' 
 except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
+
+try:
+    openai_client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
+except Exception:
+    openai_client = None
 
 def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=True):
     try:
@@ -228,12 +235,31 @@ with st.container(border=True):
                         st.session_state.mic_active = False; st.rerun()
                     if audio_bytes and hashlib.md5(audio_bytes).hexdigest() != st.session_state.get("last_audio_hash"):
                         st.session_state.last_audio_hash = hashlib.md5(audio_bytes).hexdigest()
-                        st.warning("🎙️ **Audio Detected!** Native speech-to-text requires an OpenAI API key. Please type your note below.")
+                        if openai_client and st.secrets.get("OPENAI_API_KEY"):
+                            with st.spinner("Transcribing Voice Note..."):
+                                try:
+                                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as fp:
+                                        fp.write(audio_bytes)
+                                        temp_path = fp.name
+                                    with open(temp_path, "rb") as af:
+                                        transcript = openai_client.audio.transcriptions.create(model="whisper-1", file=af)
+                                    
+                                    # Seamlessly hand off the transcription to the NLP event processor!
+                                    text_input = transcript.text
+                                    text_submit = True 
+                                except Exception as e:
+                                    st.error(f"Transcription failed: {e}")
+                        else:
+                            st.warning("🎙️ **OpenAI API Key Missing!** Add OPENAI_API_KEY to your Streamlit secrets to enable Speech-to-Text.")
                 
                 st.divider()
                 with st.form("journal_form", clear_on_submit=True):
-                    text_input = st.text_area("Or type your observation:", placeholder="E.g., 'Just finished a heavy lift.'", label_visibility="collapsed")
-                    text_submit = st.form_submit_button("Synthesize Telemetry", use_container_width=True)
+                    form_text = st.text_area("Or type your observation:", placeholder="E.g., 'Just finished a heavy lift.'", label_visibility="collapsed")
+                    form_submit = st.form_submit_button("Synthesize Telemetry", use_container_width=True)
+                
+                if form_submit and form_text:
+                    text_input = form_text
+                    text_submit = True
             
     with hc3:
         # UX FIX: Conditionally render the button INSTEAD of the popover if a meal is active
