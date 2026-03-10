@@ -23,13 +23,14 @@ import tempfile
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_sidebar_state="collapsed")
 
+FOOTER_HTML = """
+<div style='text-align: center; color: gray; margin-top: 50px; font-size: 12px; opacity: 0.7;'>
+    TLDH Core Architecture | Agentic Risk Engine
+</div>
+"""
+
 st.markdown("""
     <style>
-    /* Global Base Settings */
-    :root {
-        --secondary-background-color: #1A1A24;
-    }
-    
     /* Primary Buttons (Gradients) */
     div[data-testid="stButton"] > button[kind="primary"] { 
         background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; 
@@ -42,36 +43,37 @@ st.markdown("""
         box-shadow: 0 6px 16px rgba(139, 92, 246, 0.5) !important; transform: translateY(-2px); 
     }
     
-    /* Secondary Buttons / Tabs (Polished) */
+    /* Secondary Buttons / Tabs (Day/Night Adaptable) */
     div[data-testid="stButton"] > button[kind="secondary"] { 
-        background-color: #24242F !important; 
-        border: 1px solid #3A3A4A !important; 
-        color: #E2E8F0 !important;
+        background-color: var(--secondary-background-color) !important; 
+        border: 1px solid rgba(128, 128, 128, 0.2) !important; 
+        color: var(--text-color) !important;
         border-radius: 12px !important;
         font-weight: 600 !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
         opacity: 1.0 !important;
         transition: all 0.3s ease !important;
     }
     div[data-testid="stButton"] > button[kind="secondary"]:hover { 
         border-color: #8B5CF6 !important; 
         box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15) !important;
-        color: #A78BFA !important; 
+        color: #8B5CF6 !important; 
     }
 
-    /* Premium Popover Buttons */
+    /* Premium Popover Buttons (Day/Night Adaptable) */
     div[data-testid="stPopover"] > button {
-        background-color: #1A1A24 !important;
-        border: 1px solid rgba(139, 92, 246, 0.3) !important;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
+        background-color: var(--secondary-background-color) !important;
+        border: 1px solid rgba(128, 128, 128, 0.2) !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
         border-radius: 16px !important;
+        color: var(--text-color) !important;
         transition: all 0.3s ease !important;
         font-weight: 700 !important;
     }
     div[data-testid="stPopover"] > button:hover {
-        box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4) !important;
+        box-shadow: 0 6px 20px rgba(139, 92, 246, 0.2) !important;
         transform: translateY(-2px);
-        border-color: rgba(139, 92, 246, 0.8) !important;
+        border-color: rgba(139, 92, 246, 0.6) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -109,7 +111,7 @@ def get_ai_chart_summary(chart_type, time_window, metrics, active_memory=""):
 
 def render_adaptive_schedule_card(title, value):
     card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 16px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
-    return f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.85rem;font-weight:700;text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
+    return f"<div style='{card_css}'><div style='color: gray; font-size:0.85rem; font-weight:700; text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
 
 def local_get_driver_pill_html(t):
     """Custom grid-based symmetrical pill renderer"""
@@ -268,7 +270,7 @@ st.markdown(f"""
         <span style="font-size: 46px;">🧠</span>
         <div>
             <div style="font-size: 32px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">Total Life Download Hub</div>
-            <div style="color: var(--text-secondary); font-weight: 600; font-size: 1.1rem; margin-top: -3px;">Agentic Risk Management Engine</div>
+            <div style="color: gray; font-weight: 600; font-size: 1.1rem; margin-top: -3px;">Agentic Risk Management Engine</div>
         </div>
     </div>
 """, unsafe_allow_html=True)
@@ -320,7 +322,7 @@ with st.container(border=True):
     hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
     
     with hc1:
-        st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 800; color: gray; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
         vectors = []
         
         if st.session_state.current_context != "Normal":
@@ -686,4 +688,4 @@ elif st.session_state.active_view == "Sleep":
             st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
-st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
+st.markdown(FOOTER_HTML, unsafe_allow_html=True)
