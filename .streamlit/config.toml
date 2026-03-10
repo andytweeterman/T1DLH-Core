@@ -1,3 +1,2 @@
-[theme]
 # "system" tells the app to exactly match the OS settings of the device viewing it
 base="system"
