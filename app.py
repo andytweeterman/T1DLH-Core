@@ -35,7 +35,6 @@ st.markdown("""
 
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-    # Upgraded to Haiku 4.5: Blazing fast and highly cost-effective to preserve your API balance
     ACTIVE_MODEL = 'claude-haiku-4-5' 
 except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
@@ -211,13 +210,13 @@ with st.container(border=True):
         st.markdown(tags_html, unsafe_allow_html=True)
     
     with hc2:
-        with st.popover("🎙️ Smart Companion", use_container_width=True):
-            if st.session_state.get("journal_history"):
-                st.success("✅ Analysis complete! View your insights below.")
-                if st.button("Log Another Note", key="reset_journal_pop", use_container_width=True):
-                    st.session_state.journal_history = []
-                    st.rerun()
-            else:
+        # UX FIX: Conditionally render the button INSTEAD of the popover if an insight is active
+        if st.session_state.get("journal_history"):
+            if st.button("🎙️ Log Another Note", use_container_width=True):
+                st.session_state.journal_history = []
+                st.rerun()
+        else:
+            with st.popover("🎙️ Smart Companion", use_container_width=True):
                 st.caption("Tap the mic or type a note. The AI will correlate your state with live telemetry.")
                 if not st.session_state.mic_active:
                     if st.button("🎙️ Enable Microphone", use_container_width=True):
@@ -237,13 +236,13 @@ with st.container(border=True):
                     text_submit = st.form_submit_button("Synthesize Telemetry", use_container_width=True)
             
     with hc3:
-        with st.popover("🍽️ Smart Meals", use_container_width=True):
-            if st.session_state.get("latest_meal_analysis"):
-                st.success("✅ Meal analyzed! View your clinical insights below.")
-                if st.button("Scan Another Meal", key="reset_meal_pop", use_container_width=True):
-                    st.session_state.latest_meal_analysis = None
-                    st.rerun()
-            else:
+        # UX FIX: Conditionally render the button INSTEAD of the popover if a meal is active
+        if st.session_state.get("latest_meal_analysis"):
+            if st.button("🍽️ Scan Another Meal", use_container_width=True):
+                st.session_state.latest_meal_analysis = None
+                st.rerun()
+        else:
+            with st.popover("🍽️ Smart Meals", use_container_width=True):
                 st.caption("Snap a photo to estimate carbohydrates and metabolic impact.")
                 if not st.session_state.camera_active:
                     if st.button("📸 Open Camera Scanner", use_container_width=True):
