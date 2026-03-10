@@ -62,5 +62,6 @@ def get_driver_pill_html(t):
     
     # Title casing capitalizes the 'h' in 12h, so we revert just that part
     friendly_text = friendly_text.replace("12H", "12h")
+    friendly_text = friendly_text.replace("Bg", "BG")
     
     return f"<div class='driver-pill' style='background-color:{bg}; color:{text}; border:1px solid {border};'>{friendly_text}</div>"

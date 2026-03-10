@@ -12,7 +12,7 @@ import base64
 import requests
 import re
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
 
@@ -23,7 +23,6 @@ st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_s
 styles.apply_theme()
 styles.inject_custom_css()
 
-# Inject Global Button Styles (Pill formatting & Gradients)
 st.markdown("""
     <style>
     div[data-testid="stButton"] > button { border-radius: 50px !important; font-weight: 700 !important; transition: all 0.3s ease !important; letter-spacing: 0.5px !important; }
@@ -36,7 +35,7 @@ st.markdown("""
 
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-    ACTIVE_MODEL = 'claude-sonnet-4-6' 
+    ACTIVE_MODEL = 'claude-3-5-sonnet-latest' 
 except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
 
@@ -45,7 +44,6 @@ def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=Tru
     text = res.content[0].text.strip()
     return json.loads(text.replace("```json", "").replace("```", "").strip()) if parse_json else text
 
-@st.cache_data(ttl=300)
 def get_ai_chart_summary(chart_type, time_window, metrics):
     sys_prompt = f"You are my elite personal performance coach. Analyze my {chart_type} over the last {time_window}. Metrics: {metrics}. Provide a 2-sentence highly actionable synthesis. Speak directly to me ('you'). No 'the patient'. No markdown."
     return ask_claude(sys_prompt, [{"role": "user", "content": "Synthesize this trend."}], max_tokens=150, parse_json=False)
@@ -54,15 +52,42 @@ def render_adaptive_schedule_card(title, value):
     card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 20px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
     return f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.85rem;font-weight:700;text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
 
+# --- DYNAMIC TONE ENGINE ---
+def get_claude_tone():
+    ctx = st.session_state.current_context
+    if ctx == "Stressed": return "gentle, concerned, and highly supportive. Encourage rest, restorative action, and self-compassion."
+    elif ctx == "Exercise": return "excited, energetic, and highly encouraging. Push healthy activity and proper metabolic fueling."
+    elif ctx == "Recovery": return "calm, analytical, and restorative. Focus on refueling, managing post-exercise spikes/drops, and optimizing sleep."
+    elif ctx == "Sick": return "compassionate, cautious, and clinically protective. Focus on hydration, gentle recovery, and fighting resistance."
+    elif ctx == "Travel": return "vigilant, organized, and proactive. Focus on logistical stability."
+    else: return "warm, personal, and highly actionable like an elite clinical coach."
+
+def get_time_remaining(end_time):
+    if not end_time: return ""
+    diff = end_time - datetime.now()
+    if diff.total_seconds() <= 0: return ""
+    mins = int(diff.total_seconds() / 60)
+    return f"{mins//60}h {mins%60}m left" if mins >= 60 else f"{mins}m left"
+
 # -----------------------------------------------------------------------------
-# 2. STATE & DATA LOADING
+# 2. STATE, TIMERS & DATA LOADING
 # -----------------------------------------------------------------------------
 if "current_context" not in st.session_state: st.session_state.current_context = "Normal"
+if "context_end_time" not in st.session_state: st.session_state.context_end_time = None
 if "ns_url" not in st.session_state: st.session_state.ns_url = ""
 if "ns_token" not in st.session_state: st.session_state.ns_token = ""
 if "whoop_token" not in st.session_state: st.session_state.whoop_token = whoop.get_valid_access_token()
 if "camera_active" not in st.session_state: st.session_state.camera_active = False
 if "mic_active" not in st.session_state: st.session_state.mic_active = False
+
+# Time-Decaying State Check & Recovery Handoff
+if st.session_state.context_end_time and datetime.now() > st.session_state.context_end_time:
+    if st.session_state.current_context == "Exercise":
+        st.session_state.current_context = "Recovery"
+        st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
+    else:
+        st.session_state.current_context = "Normal"
+        st.session_state.context_end_time = None
 
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Authenticating Integrations..."):
@@ -89,6 +114,7 @@ try:
         meeting_count = st.session_state.get("local_meeting_count", calendar_sync.fetch_calendar_context()[0])
         speaker_mode = st.session_state.get("local_speaker_mode", calendar_sync.fetch_calendar_context()[1])
         
+        # Flattened whoop schema parsing
         if whoop_metrics:
             w_rec = whoop_metrics.get('recovery', {}).get('score', {}).get('recovery_score', 0) if 'recovery' in whoop_metrics else whoop_metrics.get('score', {}).get('recovery_score', 0)
             w_sleep = whoop_metrics.get('sleep', {}).get('score', {}).get('sleep_performance_percentage', 0) if 'sleep' in whoop_metrics else whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0)
@@ -104,7 +130,7 @@ except Exception as e:
     st.error(f"Data loading failed: {e}"); st.stop()
 
 # -----------------------------------------------------------------------------
-# 3. HEADER & POPOVER MODULARIZATION
+# 3. AUTO-DETECT INTERCEPTS & UI HEADERS
 # -----------------------------------------------------------------------------
 st.markdown(f"""
     <div style="margin-top: 10px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
@@ -116,6 +142,38 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# Hardware Auto-Detect Intercepts
+if st.session_state.current_context == "Normal":
+    auto_mode, auto_dur, auto_reason = None, 0, ""
+    
+    # Rule 1: Sustained High BG (6 readings / 30 mins)
+    if len(full_data) >= 6 and all(full_data.tail(6)['Glucose_Value'] > 160):
+        auto_mode, auto_dur, auto_reason = "Stressed", 3, "Sustained elevated glucose detected."
+        
+    # Rule 2: Post-Workout Recovery (High Strain + Falling Glucose)
+    elif w_strain > 14.0 and latest_bg['Trend'] in ["Falling", "Falling Fast"]:
+        auto_mode, auto_dur, auto_reason = "Recovery", 2, "High Whoop strain detected with dropping glucose (Post-Workout)."
+
+    # Rule 3: High Systemic Strain (Whoop) - Active Exercise
+    elif w_strain > 14.0:
+        auto_mode, auto_dur, auto_reason = "Exercise", 2, "High systemic strain detected via Whoop."
+        
+    if auto_mode:
+        st.info(f"🤖 **Agentic Intercept:** {auto_reason} Shift to **{auto_mode}** mode for {auto_dur} hours?")
+        if st.button(f"Yes, activate {auto_mode} mode", type="primary"):
+            st.session_state.current_context = auto_mode
+            st.session_state.context_end_time = datetime.now() + timedelta(hours=auto_dur)
+            st.rerun()
+
+# Hardware Intercept for Active Exercise Mode -> Recovery
+elif st.session_state.current_context == "Exercise":
+    if latest_bg['Trend'] == "Falling Fast":
+        st.warning("🤖 **Agentic Intercept:** Rapid glucose drop detected during Exercise. Shift to **Recovery** mode early to focus on refueling?")
+        if st.button("Yes, activate Recovery mode", type="primary"):
+            st.session_state.current_context = "Recovery"
+            st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
+            st.rerun()
+
 with st.container(border=True):
     hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
     
@@ -123,6 +181,13 @@ with st.container(border=True):
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
         vectors = []
         
+        # 1. DYNAMIC CONTEXT PILL (Priority 1)
+        if st.session_state.current_context != "Normal":
+            rem = get_time_remaining(st.session_state.context_end_time)
+            icon = {"Stressed": "🧘‍♂️", "Exercise": "🏃‍♂️", "Recovery": "🔋", "Sick": "🤒", "Project": "🧠", "Travel": "✈️"}.get(st.session_state.current_context, "🟣")
+            vectors.append(f"{icon} {st.session_state.current_context} ({rem})")
+
+        # 2. TIR Vector
         tir_df = full_data.tail(144)
         if len(tir_df) > 0:
             low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
@@ -131,6 +196,7 @@ with st.container(border=True):
             elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (12h)")
             else: vectors.append(f"🟢 {int(tgt)}% BG On Target (12h)")
 
+        # 3. External Vectors
         for p in raw_reason.split("|"):
             clean = re.sub(r'Hyperglycemic risk detected\.?|Hypoglycemic risk detected\.?|Compounded Strain Detected\!|System nominal\.?', '', p).replace('()', '').replace('(', '').replace(')', '').strip()
             if clean: vectors.append(html.escape(clean))
@@ -154,8 +220,7 @@ with st.container(border=True):
                 else:
                     audio_bytes = audio_recorder(text="Record Voice Note", recording_color="#ED8796", neutral_color="#8B5CF6", icon_size="2x")
                     if st.button("❌ Close Mic", use_container_width=True):
-                        st.session_state.mic_active = False
-                        st.rerun()
+                        st.session_state.mic_active = False; st.rerun()
                     if audio_bytes and hashlib.md5(audio_bytes).hexdigest() != st.session_state.get("last_audio_hash"):
                         st.session_state.last_audio_hash = hashlib.md5(audio_bytes).hexdigest()
                         st.warning("🎙️ **Audio Detected!** Native speech-to-text requires an OpenAI API key. Please type your note below.")
@@ -181,8 +246,7 @@ with st.container(border=True):
                 else:
                     food_image = st.camera_input("Food Scanner", label_visibility="collapsed")
                     if st.button("❌ Close Camera", use_container_width=True):
-                        st.session_state.camera_active = False
-                        st.rerun()
+                        st.session_state.camera_active = False; st.rerun()
                         
                 st.divider()
                 with st.form("usda_search_form"):
@@ -191,22 +255,27 @@ with st.container(border=True):
                 
     with hc4:
         with st.popover("☰ Menu", use_container_width=True):
-            new_ctx = st.radio("Force Context:", ["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
-            if st.button("Apply Context", use_container_width=True): st.session_state.current_context = new_ctx; st.rerun()
+            st.markdown("##### 📍 Context Settings")
+            with st.form("context_override_form"):
+                new_ctx = st.selectbox("Force Context Mode:", ["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
+                dur_val = st.selectbox("Duration:", [0.5, 1.0, 3.0, 6.0], format_func=lambda x: f"{int(x)} hours" if x >= 1 else "30 mins")
+                if st.form_submit_button("Apply Mode", use_container_width=True):
+                    st.session_state.current_context = new_ctx
+                    st.session_state.context_end_time = datetime.now() + timedelta(hours=dur_val) if new_ctx != "Normal" else None
+                    st.rerun()
+            
             st.divider()
             st.markdown("##### 🔌 Integrations")
             st.markdown("**🩸 Nightscout CGM Sync**")
             if st.session_state.ns_url:
                 if is_real_cgm: st.success("🟢 Connected & Streaming Live")
-                else:
-                    st.error("🔴 Connection Failed. (Simulated Data)")
-                    st.caption("Your Nightscout server may have been sleeping. Try reconnecting to force a fresh ping.")
+                else: st.error("🔴 Connection Failed. (Simulated Data)")
                 if st.button("Disconnect / Reconnect", key="dc_ns"):
                     st.session_state.ns_url = ""; st.session_state.ns_token = ""; st.cache_data.clear(); st.rerun()
             else:
                 with st.form("ns_form"):
                     ns_url_input = st.text_input("Nightscout URL", placeholder="https://your-name.herokuapp.com")
-                    ns_token_input = st.text_input("API Token (Optional)", type="password", placeholder="token-123")
+                    ns_token_input = st.text_input("API Token (Optional)", type="password")
                     if st.form_submit_button("Connect", use_container_width=True):
                         st.session_state.ns_url = ns_url_input; st.session_state.ns_token = ns_token_input; st.cache_data.clear(); st.rerun()
             
@@ -230,13 +299,21 @@ with st.container(border=True):
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 4. EVENT PROCESSORS 
+# 4. EVENT PROCESSORS (SEMANTIC NLP DETECT)
 # -----------------------------------------------------------------------------
 if 'text_submit' in locals() and text_submit and text_input:
     with st.spinner("Correlating subjective report with objective telemetry..."):
         try:
             ctx = {"context": st.session_state.current_context, "meetings": meeting_count, "glucose": int(latest_bg['Glucose_Value']), "trend": latest_bg['Trend']}
-            sys = f"You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. Correlate my text. Speak to me as 'you'. Return JSON: 'reply', 'summary', 'scores':{{'bio_strain', 'cog_load'}}, 'impact_prediction'."
+            sys = f"""You are my elite AI clinical assistant. My telemetry: {json.dumps(ctx)}. Correlate my text. 
+            Speak to me as 'you'. Tone should be {get_claude_tone()}. NEVER refer to me as "the patient".
+            Return ONLY a valid JSON object with EXACTLY these keys (Strict Strings/Integers/Floats):
+            - "reply": "A contextual response."
+            - "summary": "3 words."
+            - "scores": {{"bio_strain": 5, "cog_load": 5}}
+            - "impact_prediction": "1-sentence prediction."
+            - "suggested_mode": "Exercise", "Recovery", "Stressed", "Sick", "Project", "Travel", or "Normal" (Detect from my text)
+            - "suggested_duration_hours": 1.5 (Float representing how long the mode should last based on context)"""
             st.session_state.journal_history = [ask_claude(sys, [{"role": "user", "content": text_input}])]
             st.session_state.mic_active = False 
             st.rerun() 
@@ -249,42 +326,36 @@ if 'food_image' in locals() and food_image is not None:
         with st.spinner("Analyzing meal nutrition..."):
             try:
                 b64 = base64.b64encode(food_image.getvalue()).decode("utf-8")
-                # HARDENED PROMPT: Forcing strict types to prevent dictionary hallucinations
-                sys = """
-                You are my elite personal clinical nutritionist managing my Type 1 Diabetes.
-                Analyze the food image I provided. Estimate the total carbohydrates in grams and the glycemic index.
-                Speak directly to me using "you" and "your". NEVER refer to me as "the patient".
+                sys = f"""You are my elite personal clinical nutritionist managing my Type 1 Diabetes.
+                Analyze the food image. Estimate carbs and glycemic index.
+                Speak directly to me using "you" and "your". Tone should be {get_claude_tone()}. NEVER refer to me as "the patient".
                 Return ONLY a valid JSON object with EXACTLY these keys and strict data types:
-                - "food_identified": "Short description of the meal." (Must be a String)
-                - "estimated_carbs_g": 45 (MUST be a single Integer representing the total estimated carbs. Do not return a dictionary or range)
-                - "glycemic_index": "High", "Medium", or "Low" (Must be exactly one of these three Strings)
-                - "analysis": "A concise 2-sentence clinical breakdown." (Must be a String)
-                """
+                - "food_identified": "Short description." (Must be a String)
+                - "estimated_carbs_g": 45 (MUST be a single Integer. No dictionaries)
+                - "glycemic_index": "High", "Medium", or "Low" (Must be a String)
+                - "analysis": "A concise 2-sentence clinical breakdown." (Must be a String)"""
                 meal_data = ask_claude(sys, [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}, {"type": "text", "text": "Analyze this meal for T1D."}]}])
                 meal_data["source"] = "📸 Vision Estimate"; st.session_state.latest_meal_analysis = meal_data
                 st.session_state.camera_active = False 
                 st.rerun() 
             except Exception as e: st.error(f"Failed: {e}")
 
-if 'db_search_submit' in locals() and db_search_submit and db_search_query:
-    with st.spinner(f"Querying USDA for '{db_search_query}'..."):
-        try:
-            res = requests.get(f"https://api.nal.usda.gov/fdc/v1/foods/search?query={db_search_query}&api_key={st.secrets.get('USDA_API_KEY', 'DEMO_KEY')}&pageSize=1", timeout=10).json()
-            if res.get("foods"):
-                nutrients = res["foods"][0].get("foodNutrients", [])
-                c, p, f = [next((n["value"] for n in nutrients if n["nutrientName"] == x), 0.0) for x in ["Carbohydrate, by difference", "Protein", "Total lipid (fat)"]]
-                sys = f"You are my clinical nutritionist. I am querying {res['foods'][0].get('description')}. Macros per 100g: Carbs {c}g, Protein {p}g, Fat {f}g. Return JSON: 'food_identified', 'estimated_carbs_g', 'glycemic_index', 'analysis'."
-                meal_data = ask_claude(sys, [{"role": "user", "content": "Analyze macros."}])
-                meal_data["source"] = "🔍 USDA Verified (per 100g)"; st.session_state.latest_meal_analysis = meal_data
-                st.session_state.camera_active = False 
-                st.rerun()
-            else: st.warning("No matches found.")
-        except Exception as e: st.error(f"Failed: {e}")
-
-# Render Processed Overlays directly onto the Main View (DEFENSIVE RENDERING)
+# Render Semantic Suggestions (Smart Assistant Output)
 if st.session_state.get("journal_history"):
     entry = st.session_state.journal_history[0]
     st.success(f"**Agentic Insight:** {html.escape(str(entry.get('reply', '')))}")
+    
+    # NLP Context Suggestion
+    s_mode = entry.get("suggested_mode", "Normal")
+    if s_mode and s_mode != "Normal" and s_mode != st.session_state.current_context:
+        s_dur = float(entry.get("suggested_duration_hours", 1.0))
+        st.warning(f"🤖 **Context Suggestion:** Your note implies you are in **{s_mode}** mode.")
+        if st.button(f"⚡ Apply '{s_mode}' Mode ({s_dur}h)", use_container_width=True):
+            st.session_state.current_context = s_mode
+            st.session_state.context_end_time = datetime.now() + timedelta(hours=s_dur)
+            st.session_state.journal_history = []
+            st.rerun()
+
     c1, c2, c3 = st.columns(3); c1.metric("🧬 Bio-Strain", f"{entry.get('scores',{}).get('bio_strain', 0)}/10"); c2.metric("🧠 Cog-Load", f"{entry.get('scores',{}).get('cog_load', 0)}/10"); c3.metric("📌 Status", html.escape(str(entry.get("summary", ""))))
     st.info(f"**📉 Horizon Scan:** {html.escape(str(entry.get('impact_prediction', '')))}")
     if st.button("Dismiss Insight", use_container_width=True): st.session_state.journal_history = []; st.rerun()
@@ -296,12 +367,11 @@ if st.session_state.get("latest_meal_analysis"):
     m1, m2, m3 = st.columns([1, 1, 2])
     m1.metric("Identified", str(meal.get("food_identified", "Unknown")))
     
-    # Defensive programming: If Claude still hallucinates a dictionary for carbs, extract the total safely
+    # Defensive programming: If Claude still hallucinates a dictionary for carbs
     raw_carbs = meal.get('estimated_carbs_g', 0)
     display_carbs = raw_carbs.get('total_estimated', raw_carbs.get('total', 0)) if isinstance(raw_carbs, dict) else raw_carbs
     m2.metric("Carbs", f"{display_carbs}g")
     
-    # Defensive programming: Force string type before calling .lower()
     gi = str(meal.get("glycemic_index", "Unknown"))
     gi_color = "🔴" if "high" in gi.lower() else "🟡" if "medium" in gi.lower() else "🟢"
     m3.metric("Glycemic Index", f"{gi_color} {gi}")
@@ -313,21 +383,28 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 5. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-if "active_view" not in st.session_state: st.session_state.active_view = "Insights"
+if "active_view" not in st.session_state: st.session_state.active_view = "Daily Briefing"
 v_cols = st.columns(4)
-for i, view in enumerate(["Insights", "Total Life Metrics", "Schedule", "Sleep"]):
+for i, view in enumerate(["Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
     with v_cols[i]: 
         if st.button(view, use_container_width=True, type="primary" if st.session_state.active_view == view else "secondary"): st.session_state.active_view = view; st.rerun()
 st.markdown("---")
 
-if st.session_state.active_view == "Insights":
-    with st.spinner("Compiling Insights..."):
+if st.session_state.active_view == "Daily Briefing":
+    with st.spinner("Compiling Executive Briefing..."):
         try:
-            sys = f"You are my elite personal performance coach. Metrics: {st.session_state.current_context} Context, {meeting_count} meetings, Whoop Recovery: {w_rec}%, BG {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). Write insights. Speak directly to me using 'you'. Return JSON keys: 'bullet_1', 'bullet_2', 'bullet_3'."
-            data = ask_claude(sys, [{"role": "user", "content": "Generate my insights now."}])
-            st.info(f"**1. Load & Resilience:** {html.escape(data.get('bullet_1', ''))}")
-            st.warning(f"**2. Metabolic State:** {html.escape(data.get('bullet_2', ''))}")
-            st.success(f"**3. Recommended Action:** {html.escape(data.get('bullet_3', ''))}")
+            sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
+            Metrics: {st.session_state.current_context} Context, {meeting_count} meetings today, Whoop Recovery: {w_rec}%, Current BG: {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). 
+            Synthesize this into a proactive daily briefing. Focus on cognitive load management and metabolic forecasting. Speak directly to me using 'you'.
+            Return ONLY a valid JSON object with these EXACT keys: 
+            'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop & BG), 
+            'schedule_friction' (how my calendar density impacts my glucose management today), 
+            'action_directive' (one clear, proactive step to take right now)."""
+            
+            data = ask_claude(sys, [{"role": "user", "content": "Generate my morning briefing."}])
+            st.info(f"**🧬 Metabolic Baseline:** {html.escape(data.get('metabolic_baseline', ''))}")
+            st.warning(f"**🗓️ Schedule Friction:** {html.escape(data.get('schedule_friction', ''))}")
+            st.success(f"**🎯 Action Directive:** {html.escape(data.get('action_directive', ''))}")
         except Exception as e: st.error(f"Failed: {e}")
 
 elif st.session_state.active_view == "Total Life Metrics":
@@ -350,12 +427,6 @@ elif st.session_state.active_view == "Total Life Metrics":
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-    
-    with st.spinner("Synthesizing Trend..."):
-        std_val = p_df['Glucose_Value'].std()
-        safe_std = int(std_val) if pd.notna(std_val) else 0
-        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
-        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str)}")
 
 elif st.session_state.active_view == "Schedule":
     h1, h2, h3, h4 = st.columns(4)
@@ -378,12 +449,6 @@ elif st.session_state.active_view == "Sleep":
         fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
         fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-        
-        with st.spinner("Synthesizing..."):
-            std_val = o_df['Glucose_Value'].std()
-            safe_std = int(std_val) if pd.notna(std_val) else 0
-            metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
-            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
