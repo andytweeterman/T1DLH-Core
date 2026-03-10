@@ -566,6 +566,9 @@ st.markdown("---")
 
 # DYNAMIC LANDING DASHBOARD (Zero API Cost)
 if st.session_state.active_view == "Home":
+    st.info(f"**🔭 Macro Trend Highlight:** {st.session_state.latest_trend_insight}")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     c1, c2, c3 = st.columns(3)
     delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
     delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
@@ -581,9 +584,6 @@ if st.session_state.active_view == "Home":
         last_event = st.session_state.event_log[-1]
         last_event_str = f"{last_event['type']}: {last_event['desc']}"
     c3.metric("📝 Latest Activity", last_event_str)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.info(f"**🔭 Macro Trend Highlight:** {st.session_state.latest_trend_insight}")
 
 elif st.session_state.active_view == "Briefing":
     with st.spinner("Compiling Executive Briefing..."):
@@ -606,6 +606,15 @@ elif st.session_state.active_view == "Briefing":
         except Exception as e: st.error(f"Failed: {e}")
 
 elif st.session_state.active_view == "Metrics":
+    tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
+    p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
+    
+    with st.spinner("Synthesizing Trend..."):
+        std_val = p_df['Glucose_Value'].std()
+        safe_std = int(std_val) if pd.notna(std_val) else 0
+        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
+        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
+        
     c_dex = st.columns(2)
     c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
     c_dex[1].metric("Trend", latest_bg['Trend'])
@@ -617,25 +626,13 @@ elif st.session_state.active_view == "Metrics":
         c_wh2.metric("HRV", f"{w_hrv} ms")
         c_wh3.metric("Resting HR", f"{w_rhr} bpm")
         st.markdown("<br>", unsafe_allow_html=True)
-        
-    tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
-    p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
     fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
     fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-    
-    with st.spinner("Synthesizing Trend..."):
-        std_val = p_df['Glucose_Value'].std()
-        safe_std = int(std_val) if pd.notna(std_val) else 0
-        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
-        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
 
 elif st.session_state.active_view == "Trends":
-    st.markdown("### 📊 Macro Trends & Pattern Recognition")
-    st.caption("Claude continuously learns from your Journal, Meals, and Biometrics to identify long-term metabolic patterns.")
-
     trend_window = st.radio("Select Horizon", ["1 Week", "1 Month", "3 Months"], horizontal=True)
 
     # Generate visual mockup of long-term data for the prototype
@@ -643,19 +640,6 @@ elif st.session_state.active_view == "Trends":
     dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
     mock_tir = np.clip(np.random.normal(75, 8, days), 0, 100) # Simulating ~75% average TIR
     mock_avg_bg = np.clip(np.random.normal(135, 15, days), 70, 200)
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=dates, y=mock_tir, name="Time in Range (%)", marker_color="#8B5CF6", opacity=0.7))
-    fig.add_trace(go.Scatter(x=dates, y=mock_avg_bg, name="Avg Glucose (mg/dL)", mode="lines+markers", line=dict(color="#ED8796", width=3), yaxis="y2"))
-
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
-        height=350, margin=dict(l=0, r=0, t=30, b=0),
-        yaxis=dict(title="TIR (%)", range=[0, 100], showgrid=False),
-        yaxis2=dict(title="Avg BG", range=[50, 250], overlaying="y", side="right", showgrid=True, gridcolor='rgba(128,128,128,0.2)'),
-        showlegend=False
-    )
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
     if st.button(f"🧠 Synthesize {trend_window} Patterns", type="primary", use_container_width=True):
         with st.spinner("Analyzing historical telemetry, journal logs, and metabolic load..."):
@@ -678,32 +662,47 @@ elif st.session_state.active_view == "Trends":
     elif st.session_state.latest_trend_insight != "No macro trend synthesized yet. Run an analysis in the Trends tab.":
         st.success(f"**Latest Synthesis:** {st.session_state.latest_trend_insight}")
 
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=dates, y=mock_tir, name="Time in Range (%)", marker_color="#8B5CF6", opacity=0.7))
+    fig.add_trace(go.Scatter(x=dates, y=mock_avg_bg, name="Avg Glucose (mg/dL)", mode="lines+markers", line=dict(color="#ED8796", width=3), yaxis="y2"))
+
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
+        height=350, margin=dict(l=0, r=0, t=30, b=0),
+        xaxis=dict(showgrid=False, fixedrange=True),
+        yaxis=dict(title="TIR (%)", range=[0, 100], showgrid=False, fixedrange=True),
+        yaxis2=dict(title="Avg BG", range=[50, 250], overlaying="y", side="right", showgrid=True, gridcolor='rgba(128,128,128,0.2)', fixedrange=True),
+        showlegend=False
+    )
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
 elif st.session_state.active_view == "Schedule":
+    st.info(f"**Agentic Insight:** The Risk Engine is factoring in **{meeting_count} meetings** to adjust glycemic sensitivity.")
+    
     h1, h2, h3, h4 = st.columns(4)
     with h1: st.markdown(render_adaptive_schedule_card("1 HOUR", '✈️ SHIFTING' if st.session_state.current_context == 'Travel' else '🟢 SAFE'), unsafe_allow_html=True)
     with h2: st.markdown(render_adaptive_schedule_card("4 HOURS", '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'), unsafe_allow_html=True)
     with h3: st.markdown(render_adaptive_schedule_card("24 HOURS", '🟢 GOOD'), unsafe_allow_html=True)
     with h4: st.markdown(render_adaptive_schedule_card("MEETINGS", f"{meeting_count} ({'🔴 CRITICAL' if meeting_count>=7 else '🟡 ELEVATED' if meeting_count>=4 else '🟢 LIGHT'})"), unsafe_allow_html=True)
-    st.info(f"**Agentic Insight:** The Risk Engine is factoring in **{meeting_count} meetings** to adjust glycemic sensitivity.")
 
 elif st.session_state.active_view == "Sleep":
     if st.session_state.whoop_token and whoop_metrics:
-        st.metric("Sleep Perf", f"{w_sleep}%")
-        
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
         o_df = full_data.tail({"4h": 48, "8h": 96, "12h": 144}[tw])
-        
-        st.markdown("##### 🩸 Overnight Blood Sugar")
-        fig = go.Figure(go.Scatter(x=o_df['Timestamp'], y=o_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
-        fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
-        fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         with st.spinner("Synthesizing..."):
             std_val = o_df['Glucose_Value'].std()
             safe_std = int(std_val) if pd.notna(std_val) else 0
             metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
             st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
+
+        st.metric("Sleep Perf", f"{w_sleep}%")
+        
+        st.markdown("##### 🩸 Overnight Blood Sugar")
+        fig = go.Figure(go.Scatter(x=o_df['Timestamp'], y=o_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
+        fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
+        fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
