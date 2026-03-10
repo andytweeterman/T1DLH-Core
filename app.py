@@ -111,9 +111,13 @@ if "camera_active" not in st.session_state: st.session_state.camera_active = Fal
 if "mic_active" not in st.session_state: st.session_state.mic_active = False
 if "event_log" not in st.session_state: st.session_state.event_log = []
 if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts = {}
-
-# Default active view to None to save tokens on load!
+if "_toast" not in st.session_state: st.session_state._toast = None
 if "active_view" not in st.session_state: st.session_state.active_view = None
+
+# Consume transient toast message (Jules UX Update)
+if st.session_state._toast:
+    st.toast(st.session_state._toast)
+    st.session_state._toast = None
 
 def log_event(event_type, description):
     st.session_state.event_log.append({
@@ -129,10 +133,14 @@ if st.session_state.context_end_time and datetime.now() > st.session_state.conte
         st.session_state.current_context = "Recovery"
         st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
         log_event("📍 Mode Shift", "Auto-shifted from Exercise to Recovery")
+        st.session_state._toast = "🔋 Exercise concluded. Recovery mode activated."
+        st.rerun() # Force rerun to show toast
     else:
         st.session_state.current_context = "Normal"
         st.session_state.context_end_time = None
         log_event("📍 Mode Shift", "Context timer expired. Returned to Normal.")
+        st.session_state._toast = "🟢 Context timer expired. Returned to Normal."
+        st.rerun() # Force rerun to show toast
 
 if "code" in st.query_params and not st.session_state.whoop_token:
     with st.spinner("Authenticating Integrations..."):
@@ -226,6 +234,7 @@ if st.session_state.current_context == "Normal":
             st.session_state.current_context = auto_mode
             st.session_state.context_end_time = datetime.now() + timedelta(hours=auto_dur)
             log_event("📍 Mode Shift", f"Auto-shifted to {auto_mode} ({auto_reason})")
+            st.session_state._toast = f"✅ Agentic shift to {auto_mode} active!"
             st.rerun()
         if col2.button(f"❌ No, dismiss", key=f"no_{auto_mode}"):
             st.session_state.muted_intercepts[auto_mode] = datetime.now() + timedelta(hours=2) # Mute for 2h
@@ -241,13 +250,14 @@ elif st.session_state.current_context == "Exercise":
                 st.session_state.current_context = "Recovery"
                 st.session_state.context_end_time = datetime.now() + timedelta(hours=2)
                 log_event("📍 Mode Shift", "Early auto-shift to Recovery due to BG drop")
+                st.session_state._toast = "✅ Recovery mode activated!"
                 st.rerun()
             if col2.button("❌ No, dismiss", key="no_rec_early"):
                 st.session_state.muted_intercepts["Recovery"] = datetime.now() + timedelta(hours=2)
                 st.rerun()
 
 with st.container(border=True):
-    hc1, hc2, hc3, hc4, hc5 = st.columns([2.8, 1.8, 1.8, 1.8, 1.8])
+    hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
     
     with hc1:
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
@@ -272,27 +282,10 @@ with st.container(border=True):
         
         tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
         st.markdown(tags_html, unsafe_allow_html=True)
-
+    
     with hc2:
         if st.session_state.get("journal_history"):
-            if st.button("📌 Events", use_container_width=True):
-                st.session_state.journal_history = []
-                st.rerun()
-        else:
-            with st.popover("📌 Events", use_container_width=True):
-                st.caption("Log a structured event quickly.")
-                with st.form("smart_events_form", clear_on_submit=True):
-                    ev_type = st.selectbox("Event Category", ["💊 Medication", "🍽️ Meal", "🏃 Activity", "📝 Other"], label_visibility="collapsed")
-                    ev_notes = st.text_input("Details", placeholder="e.g., 3u Humalog", label_visibility="collapsed")
-                    ev_submit = st.form_submit_button("Log Event", use_container_width=True)
-                
-                if ev_submit and ev_notes:
-                    text_input = f"[{ev_type}] {ev_notes}"
-                    text_submit = True
-    
-    with hc3:
-        if st.session_state.get("journal_history"):
-            if st.button("🎙️ Companion", use_container_width=True):
+            if st.button("🎙️ Log Another Note", use_container_width=True):
                 st.session_state.journal_history = []
                 st.rerun()
         else:
@@ -332,9 +325,9 @@ with st.container(border=True):
                     text_input = form_text
                     text_submit = True
             
-    with hc4:
+    with hc3:
         if st.session_state.get("latest_meal_analysis"):
-            if st.button("🍽️ Meals", use_container_width=True):
+            if st.button("🍽️ Scan Another Meal", use_container_width=True):
                 st.session_state.latest_meal_analysis = None
                 st.rerun()
         else:
@@ -354,7 +347,7 @@ with st.container(border=True):
                     db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa")
                     db_search_submit = st.form_submit_button("Lookup Exact Macros", use_container_width=True)
                 
-    with hc5:
+    with hc4:
         with st.popover("☰ Menu", use_container_width=True):
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
@@ -364,6 +357,7 @@ with st.container(border=True):
                     st.session_state.current_context = new_ctx
                     st.session_state.context_end_time = datetime.now() + timedelta(hours=dur_val) if new_ctx != "Normal" else None
                     log_event("📍 Mode Shift", f"Manually set to {new_ctx} for {dur_val}h")
+                    st.session_state._toast = f"✅ Context updated to {new_ctx}!"
                     st.rerun()
             
             st.divider()
@@ -437,14 +431,7 @@ if 'text_submit' in locals() and text_submit and text_input:
             - "suggested_duration_hours": 1.5"""
             res_data = ask_claude(sys, [{"role": "user", "content": text_input}])
             st.session_state.journal_history = [res_data]
-            
-            # Smart Event parser check to log it cleanly
-            if text_input.startswith("[") and "] " in text_input:
-                ev_type = text_input.split("] ")[0][1:]
-                log_event(ev_type, res_data.get("summary", "Logged event."))
-            else:
-                log_event("🎙️ Note", res_data.get("summary", "Logged observation."))
-                
+            log_event("🎙️ Note", res_data.get("summary", "Logged observation."))
             st.session_state.mic_active = False 
             st.rerun() 
         except Exception as e: st.error(f"Failed: {e}")
@@ -476,7 +463,7 @@ if 'food_image' in locals() and food_image is not None:
                 st.rerun() 
             except Exception as e: st.error(f"Failed: {e}")
 
-# Render Semantic Suggestions (Smart Assistant Output)
+# Render Semantic Suggestions (Assistant Output)
 if st.session_state.get("journal_history"):
     entry = st.session_state.journal_history[0]
     st.success(f"**Agentic Insight:** {html.escape(str(entry.get('reply', '')))}")
@@ -491,6 +478,7 @@ if st.session_state.get("journal_history"):
             st.session_state.current_context = s_mode
             st.session_state.context_end_time = datetime.now() + timedelta(hours=s_dur)
             log_event("📍 Mode Shift", f"Applied {s_mode} via AI Suggestion")
+            st.session_state._toast = f"✅ Context shifted to {s_mode}!"
             st.session_state.journal_history = []
             st.rerun()
         if col2.button(f"❌ Dismiss", key="nlp_no"):
@@ -528,7 +516,6 @@ for i, view in enumerate(["Daily Briefing", "Total Life Metrics", "Schedule", "S
     with v_cols[i]:
         is_active = (st.session_state.active_view == view)
         if st.button(view, use_container_width=True, type="primary" if is_active else "secondary"):
-            # Toggle logic: If they click the active tab, close it. Otherwise, open it.
             st.session_state.active_view = None if is_active else view
             st.rerun()
 st.markdown("---")
