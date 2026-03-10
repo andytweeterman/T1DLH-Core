@@ -12,6 +12,7 @@ import base64
 import requests
 import re
 import pandas as pd
+import os
 from datetime import datetime, timedelta
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
@@ -84,10 +85,23 @@ def get_time_remaining(end_time):
 # -----------------------------------------------------------------------------
 # 2. STATE, TIMERS & DATA LOADING
 # -----------------------------------------------------------------------------
+# Local config handlers to persist Nightscout connections across page reloads
+def load_ns_config():
+    try:
+        with open("ns_config.json", "r") as f: return json.load(f)
+    except: return {"url": "", "token": ""}
+
+def save_ns_config(url, token):
+    try:
+        with open("ns_config.json", "w") as f: json.dump({"url": url, "token": token}, f)
+    except: pass
+
+ns_cfg = load_ns_config()
+
 if "current_context" not in st.session_state: st.session_state.current_context = "Normal"
 if "context_end_time" not in st.session_state: st.session_state.context_end_time = None
-if "ns_url" not in st.session_state: st.session_state.ns_url = ""
-if "ns_token" not in st.session_state: st.session_state.ns_token = ""
+if "ns_url" not in st.session_state: st.session_state.ns_url = ns_cfg.get("url", "")
+if "ns_token" not in st.session_state: st.session_state.ns_token = ns_cfg.get("token", "")
 if "whoop_token" not in st.session_state: st.session_state.whoop_token = whoop.get_valid_access_token()
 if "camera_active" not in st.session_state: st.session_state.camera_active = False
 if "mic_active" not in st.session_state: st.session_state.mic_active = False
@@ -302,13 +316,17 @@ with st.container(border=True):
                 if is_real_cgm: st.success("🟢 Connected & Streaming Live")
                 else: st.error("🔴 Connection Failed. (Simulated Data)")
                 if st.button("Disconnect / Reconnect", key="dc_ns"):
-                    st.session_state.ns_url = ""; st.session_state.ns_token = ""; st.cache_data.clear(); st.rerun()
+                    st.session_state.ns_url = ""; st.session_state.ns_token = ""
+                    save_ns_config("", "")
+                    st.cache_data.clear(); st.rerun()
             else:
                 with st.form("ns_form"):
                     ns_url_input = st.text_input("Nightscout URL", placeholder="https://your-name.herokuapp.com")
                     ns_token_input = st.text_input("API Token (Optional)", type="password")
                     if st.form_submit_button("Connect", use_container_width=True):
-                        st.session_state.ns_url = ns_url_input; st.session_state.ns_token = ns_token_input; st.cache_data.clear(); st.rerun()
+                        st.session_state.ns_url = ns_url_input; st.session_state.ns_token = ns_token_input
+                        save_ns_config(ns_url_input, ns_token_input)
+                        st.cache_data.clear(); st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**📱 Native Calendar (Mock)**")
