@@ -89,11 +89,14 @@ try:
         meeting_count = st.session_state.get("local_meeting_count", calendar_sync.fetch_calendar_context()[0])
         speaker_mode = st.session_state.get("local_speaker_mode", calendar_sync.fetch_calendar_context()[1])
         
+        # Flattened whoop schema parsing
         if whoop_metrics:
             w_rec = whoop_metrics.get('recovery', {}).get('score', {}).get('recovery_score', 0) if 'recovery' in whoop_metrics else whoop_metrics.get('score', {}).get('recovery_score', 0)
             w_sleep = whoop_metrics.get('sleep', {}).get('score', {}).get('sleep_performance_percentage', 0) if 'sleep' in whoop_metrics else whoop_metrics.get('score', {}).get('sleep_performance_percentage', 0)
             w_strain = round(whoop_metrics.get('score', {}).get('strain', 0.0), 1)
-        else: w_rec, w_sleep, w_strain = 0, 0, 0.0
+            w_hrv = int(whoop_metrics.get('recovery', {}).get('score', {}).get('hrv_rmssd_milli', 0)) if 'recovery' in whoop_metrics else int(whoop_metrics.get('score', {}).get('hrv_rmssd_milli', 0))
+            w_rhr = int(whoop_metrics.get('recovery', {}).get('score', {}).get('resting_heart_rate', 0)) if 'recovery' in whoop_metrics else int(whoop_metrics.get('score', {}).get('resting_heart_rate', 0))
+        else: w_rec, w_sleep, w_strain, w_hrv, w_rhr = 0, 0, 0.0, 0, 0
 
         raw_data, is_real_cgm = get_cached_health_data(st.session_state.ns_url, st.session_state.ns_token)
         full_data, status, color_hex, raw_reason = get_cached_glycemic_risk(raw_data, st.session_state.current_context, whoop_metrics, meeting_count, speaker_mode, st.secrets.get("OWM_API_KEY", ""), is_real_cgm)
@@ -299,13 +302,12 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 if "active_view" not in st.session_state: st.session_state.active_view = "Insights"
 v_cols = st.columns(4)
-for i, view in enumerate(["Insights", "Wellness", "Schedule", "Sleep"]):
+for i, view in enumerate(["Insights", "Total Life Metrics", "Schedule", "Sleep"]):
     with v_cols[i]: 
         if st.button(view, use_container_width=True, type="primary" if st.session_state.active_view == view else "secondary"): st.session_state.active_view = view; st.rerun()
 st.markdown("---")
 
 if st.session_state.active_view == "Insights":
-    st.markdown("### 📋 Tactical Synthesis")
     with st.spinner("Compiling Insights..."):
         try:
             sys = f"You are my elite personal performance coach. Metrics: {st.session_state.current_context} Context, {meeting_count} meetings, Whoop Recovery: {w_rec}%, BG {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). Write insights. Speak directly to me using 'you'. Return JSON keys: 'bullet_1', 'bullet_2', 'bullet_3'."
@@ -315,11 +317,19 @@ if st.session_state.active_view == "Insights":
             st.success(f"**3. Recommended Action:** {html.escape(data.get('bullet_3', ''))}")
         except Exception as e: st.error(f"Failed: {e}")
 
-elif st.session_state.active_view == "Wellness":
+elif st.session_state.active_view == "Total Life Metrics":
     c_dex = st.columns(2)
     c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
     c_dex[1].metric("Trend", latest_bg['Trend'])
     
+    if st.session_state.whoop_token and whoop_metrics:
+        st.markdown("<br>", unsafe_allow_html=True)
+        c_wh1, c_wh2, c_wh3 = st.columns(3)
+        c_wh1.metric("Recovery", f"{w_rec}%")
+        c_wh2.metric("HRV", f"{w_hrv} ms")
+        c_wh3.metric("Resting HR", f"{w_rhr} bpm")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
     tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
@@ -344,23 +354,8 @@ elif st.session_state.active_view == "Schedule":
 
 elif st.session_state.active_view == "Sleep":
     if st.session_state.whoop_token and whoop_metrics:
-        # Re-parse for local view
-        sc = whoop_metrics.get('score', {})
-        if 'recovery' in whoop_metrics or 'sleep' in whoop_metrics:
-            w_rec = whoop_metrics.get('recovery', {}).get('score', {}).get('recovery_score', 0)
-            w_sleep = whoop_metrics.get('sleep', {}).get('score', {}).get('sleep_performance_percentage', 0)
-            w_hrv = int(whoop_metrics.get('recovery', {}).get('score', {}).get('hrv_rmssd_milli', 0))
-            w_rhr = int(whoop_metrics.get('recovery', {}).get('score', {}).get('resting_heart_rate', 0))
-        else:
-            w_rec = sc.get('recovery_score', 0)
-            w_sleep = sc.get('sleep_performance_percentage', 0)
-            w_hrv = int(sc.get('hrv_rmssd_milli', 0))
-            w_rhr = int(sc.get('resting_heart_rate', 0))
-            
-        st.markdown("##### 💤 Whoop Metrics")
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Sleep Perf", f"{w_sleep}%"); s2.metric("Recovery", f"{w_rec}%")
-        s3.metric("HRV", f"{w_hrv} ms"); s4.metric("Resting HR", f"{w_rhr} bpm")
+        st.markdown("##### 💤 Sleep Metrics")
+        st.metric("Sleep Perf", f"{w_sleep}%")
         
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
         o_df = full_data.tail({"4h": 48, "8h": 96, "12h": 144}[tw])
@@ -375,7 +370,7 @@ elif st.session_state.active_view == "Sleep":
             std_val = o_df['Glucose_Value'].std()
             safe_std = int(std_val) if pd.notna(std_val) else 0
             metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
-            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep & {w_rec}% Recovery)', tw, metrics_str)}")
+            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str)}")
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
