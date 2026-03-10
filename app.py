@@ -247,7 +247,7 @@ elif st.session_state.current_context == "Exercise":
                 st.rerun()
 
 with st.container(border=True):
-    hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
+    hc1, hc2, hc3, hc4, hc5 = st.columns([2.8, 1.8, 1.8, 1.8, 1.8])
     
     with hc1:
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
@@ -272,14 +272,31 @@ with st.container(border=True):
         
         tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
         st.markdown(tags_html, unsafe_allow_html=True)
-    
+
     with hc2:
         if st.session_state.get("journal_history"):
-            if st.button("🎙️ Log Another Note", use_container_width=True):
+            if st.button("📌 Events", use_container_width=True):
                 st.session_state.journal_history = []
                 st.rerun()
         else:
-            with st.popover("🎙️ Smart Companion", use_container_width=True):
+            with st.popover("📌 Events", use_container_width=True):
+                st.caption("Log a structured event quickly.")
+                with st.form("smart_events_form", clear_on_submit=True):
+                    ev_type = st.selectbox("Event Category", ["💊 Medication", "🍽️ Meal", "🏃 Activity", "📝 Other"], label_visibility="collapsed")
+                    ev_notes = st.text_input("Details", placeholder="e.g., 3u Humalog", label_visibility="collapsed")
+                    ev_submit = st.form_submit_button("Log Event", use_container_width=True)
+                
+                if ev_submit and ev_notes:
+                    text_input = f"[{ev_type}] {ev_notes}"
+                    text_submit = True
+    
+    with hc3:
+        if st.session_state.get("journal_history"):
+            if st.button("🎙️ Companion", use_container_width=True):
+                st.session_state.journal_history = []
+                st.rerun()
+        else:
+            with st.popover("🎙️ Companion", use_container_width=True):
                 st.caption("Tap the mic or type a note. The AI will correlate your state with live telemetry.")
                 if not st.session_state.mic_active:
                     if st.button("🎙️ Enable Microphone", use_container_width=True):
@@ -315,13 +332,13 @@ with st.container(border=True):
                     text_input = form_text
                     text_submit = True
             
-    with hc3:
+    with hc4:
         if st.session_state.get("latest_meal_analysis"):
-            if st.button("🍽️ Scan Another Meal", use_container_width=True):
+            if st.button("🍽️ Meals", use_container_width=True):
                 st.session_state.latest_meal_analysis = None
                 st.rerun()
         else:
-            with st.popover("🍽️ Smart Meals", use_container_width=True):
+            with st.popover("🍽️ Meals", use_container_width=True):
                 st.caption("Snap a photo to estimate carbohydrates and metabolic impact.")
                 if not st.session_state.camera_active:
                     if st.button("📸 Open Camera Scanner", use_container_width=True):
@@ -337,7 +354,7 @@ with st.container(border=True):
                     db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa")
                     db_search_submit = st.form_submit_button("Lookup Exact Macros", use_container_width=True)
                 
-    with hc4:
+    with hc5:
         with st.popover("☰ Menu", use_container_width=True):
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
@@ -377,6 +394,14 @@ with st.container(border=True):
                         st.cache_data.clear(); st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("**📱 Native Calendar (Mock)**")
+            cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
+            if cal_file:
+                mc, sm = calendar_sync.analyze_local_calendar(cal_file.getvalue().decode("utf-8"))
+                st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
+                st.success(f"Local Sync: {mc} events loaded.")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**⚡ Whoop Telemetry**")
             if not st.session_state.whoop_token:
                 oauth_state = secrets.token_urlsafe(16)
@@ -412,7 +437,14 @@ if 'text_submit' in locals() and text_submit and text_input:
             - "suggested_duration_hours": 1.5"""
             res_data = ask_claude(sys, [{"role": "user", "content": text_input}])
             st.session_state.journal_history = [res_data]
-            log_event("🎙️ Note", res_data.get("summary", "Logged observation."))
+            
+            # Smart Event parser check to log it cleanly
+            if text_input.startswith("[") and "] " in text_input:
+                ev_type = text_input.split("] ")[0][1:]
+                log_event(ev_type, res_data.get("summary", "Logged event."))
+            else:
+                log_event("🎙️ Note", res_data.get("summary", "Logged observation."))
+                
             st.session_state.mic_active = False 
             st.rerun() 
         except Exception as e: st.error(f"Failed: {e}")
