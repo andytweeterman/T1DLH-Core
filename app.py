@@ -35,7 +35,8 @@ st.markdown("""
 
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-    ACTIVE_MODEL = 'claude-3-5-sonnet-20241022' 
+    # Reverted to universally available stable June release
+    ACTIVE_MODEL = 'claude-3-5-sonnet-20240620' 
 except Exception as e:
     st.error(f"⚠️ API Critical Failure: {e}"); st.stop()
 
