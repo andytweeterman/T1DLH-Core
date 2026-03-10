@@ -17,7 +17,8 @@ def fetch_nightscout_data(url, token, count=288):
         endpoint += f"&token={token}"
         
     try:
-        response = requests.get(endpoint, timeout=10)
+        # Increased timeout to 30s to allow sleeping Nightscout servers time to wake up
+        response = requests.get(endpoint, timeout=30)
         response.raise_for_status()
         data = response.json()
         
