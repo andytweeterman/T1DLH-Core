@@ -3,7 +3,7 @@ import re
 
 FOOTER_HTML = """
 <div style='text-align: center; color: var(--text-secondary); margin-top: 50px; font-size: 12px; opacity: 0.7;'>
-    TLDH Core Architecture | Agentic Risk Engine
+    TLDH Core Architecture | Experimental AI. Not medical advice.
 </div>
 """
 
