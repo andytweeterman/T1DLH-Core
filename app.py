@@ -12,6 +12,7 @@ import base64
 import requests
 import re
 import pandas as pd
+import numpy as np
 import os
 from datetime import datetime, timedelta
 import calendar_sync
@@ -26,7 +27,7 @@ st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_s
 styles.apply_theme()
 styles.inject_custom_css()
 
-# UI POLISH: Shadows, Alignment Spacers, and Premium Button CSS
+# UI POLISH: Shadows, Alignment Spacers, Premium Button CSS, and Matrix Grid
 st.markdown("""
     <style>
     /* Global Button Styling with Drop Shadows */
@@ -39,6 +40,16 @@ st.markdown("""
     /* Popover Button specific shadow to make them pop */
     div[data-testid="stPopover"] > button { border-radius: 50px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important; border: 1px solid rgba(139, 92, 246, 0.2) !important; transition: all 0.3s ease !important;}
     div[data-testid="stPopover"] > button:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(139, 92, 246, 0.25) !important; border-color: #8B5CF6 !important; }
+    
+    /* Matrix Grid Override for Total Life Drivers */
+    .driver-pill { 
+        margin: 0 !important; 
+        width: 100% !important; 
+        justify-content: center !important; 
+        text-align: center !important; 
+        padding: 8px 4px !important;
+        font-size: 0.75rem !important;
+    }
     
     /* Dynamic Alignment Spacer (Only shows on Desktop) */
     @media (max-width: 768px) {
@@ -125,6 +136,7 @@ if "event_log" not in st.session_state: st.session_state.event_log = []
 if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts = {}
 if "_toast" not in st.session_state: st.session_state._toast = None
 if "active_view" not in st.session_state: st.session_state.active_view = "Home"
+if "latest_trend_insight" not in st.session_state: st.session_state.latest_trend_insight = "No macro trend synthesized yet. Run an analysis in the Trends tab."
 
 # Consume transient toast message
 if st.session_state._toast:
@@ -201,12 +213,18 @@ if st.session_state.get("latest_meal_analysis"):
     meal_mem = st.session_state.latest_meal_analysis
     raw_c = meal_mem.get('estimated_carbs_g', 0)
     display_c = raw_c.get('total_estimated', raw_c.get('total', 0)) if isinstance(raw_c, dict) else raw_c
-    active_memory_list.append(f"Recently logged a meal: {meal_mem.get('food_identified', 'Food')} ({display_c}g carbs, {meal_mem.get('glycemic_index', 'Unknown')} GI).")
+    active_memory_list.append(f"Recently logged a meal via camera: {meal_mem.get('food_identified', 'Food')} ({display_c}g carbs, {meal_mem.get('glycemic_index', 'Unknown')} GI).")
 
 if st.session_state.current_context in ["Exercise", "Recovery"]:
     active_memory_list.append(f"Currently in {st.session_state.current_context} mode. High physiological load expected.")
 elif w_strain > 12.0:
     active_memory_list.append(f"Notable daily Whoop strain recorded today: {w_strain}.")
+
+# Tie recent Journal entries directly into Claude's memory
+recent_journals = [e for e in st.session_state.event_log if e['type'] in ["🍽️ Meal", "💊 Medication", "🏃‍♂️ Exercise", "📝 Other"]]
+if recent_journals:
+    latest_journal = recent_journals[-1]
+    active_memory_list.append(f"Recent user journal entry ({latest_journal['type']}): {latest_journal['desc']}")
 
 context_memory_string = " | ".join(active_memory_list) if active_memory_list else "No active external events logged."
 
@@ -265,7 +283,7 @@ elif st.session_state.current_context == "Exercise":
                 st.rerun()
 
 with st.container(border=True):
-    hc1, hc2, hc3, hc4 = st.columns([3.5, 2.5, 2.5, 1.5])
+    hc1, hc2, hc3, hc4, hc5 = st.columns([3.0, 1.8, 1.8, 1.8, 1.6])
     
     with hc1:
         st.markdown("<p style='font-weight: 800; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-top: 5px; margin-bottom: 12px;'>⚡ Total Life Drivers</p>", unsafe_allow_html=True)
@@ -289,7 +307,7 @@ with st.container(border=True):
             if clean: vectors.append(html.escape(clean))
         
         tags_html = "".join([styles.get_driver_pill_html(t) for t in (vectors[:4] if vectors else ["🟢 All Systems Nominal"])])
-        st.markdown(tags_html, unsafe_allow_html=True)
+        st.markdown(f"<div style='display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 25px;'>{tags_html}</div>", unsafe_allow_html=True)
     
     with hc2:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -299,7 +317,6 @@ with st.container(border=True):
                 st.rerun()
         else:
             with st.popover("🎙️ Companion", use_container_width=True):
-                if st.button("🔽 Close Panel", key="close_comp_panel", use_container_width=True): st.rerun() # Mobile UX Fix
                 st.caption("Tap the mic or type a note. The AI will correlate your state with live telemetry.")
                 if not st.session_state.mic_active:
                     if st.button("🎙️ Enable Microphone", use_container_width=True):
@@ -343,7 +360,6 @@ with st.container(border=True):
                 st.rerun()
         else:
             with st.popover("🍽️ Meals", use_container_width=True):
-                if st.button("🔽 Close Panel", key="close_meals_panel", use_container_width=True): st.rerun() # Mobile UX Fix
                 st.caption("Snap a photo to estimate carbohydrates and metabolic impact.")
                 if not st.session_state.camera_active:
                     if st.button("📸 Open Camera Scanner", use_container_width=True):
@@ -361,8 +377,29 @@ with st.container(border=True):
                 
     with hc4:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
+        with st.popover("📓 Journal", use_container_width=True):
+            st.caption("Log a daily event, meal, or brain dump.")
+            with st.form("manual_event_form", clear_on_submit=True):
+                ev_type = st.selectbox("Type", ["🍽️ Meal", "💊 Medication", "🏃‍♂️ Exercise", "📝 Other"], label_visibility="collapsed")
+                ev_desc = st.text_area("Context", placeholder="E.g., I had a cookie at lunch, it had a lot more carbs than I was expecting...", height=100)
+                if st.form_submit_button("Log Entry", use_container_width=True):
+                    if ev_desc:
+                        log_event(ev_type, ev_desc)
+                        st.session_state._toast = f"✅ {ev_type.split(' ')[1]} logged to memory!"
+                        st.rerun()
+                        
+    with hc5:
+        st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
         with st.popover("☰ Menu", use_container_width=True):
-            if st.button("🔽 Close Panel", key="close_menu_panel", use_container_width=True): st.rerun() # Mobile UX Fix
+            st.markdown("##### 📖 Log Book")
+            with st.container(border=True):
+                if not st.session_state.event_log:
+                    st.caption("No entries logged yet today.")
+                else:
+                    for event in reversed(st.session_state.event_log):
+                        st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray; font-size:0.85em;'>{event['desc']}</span>", unsafe_allow_html=True)
+                        
+            st.divider()
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
                 new_ctx = st.selectbox("Force Context Mode:", ["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
@@ -373,14 +410,6 @@ with st.container(border=True):
                     log_event("📍 Mode Shift", f"Manually set to {new_ctx} for {dur_val}h")
                     st.session_state._toast = f"✅ Context updated to {new_ctx}!"
                     st.rerun()
-            
-            st.divider()
-            with st.expander("📜 Event Log (History)"):
-                if not st.session_state.event_log:
-                    st.caption("No events logged yet today.")
-                else:
-                    for event in reversed(st.session_state.event_log):
-                        st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray; font-size:0.85em;'>{event['desc']}</span>", unsafe_allow_html=True)
             
             st.divider()
             st.markdown("##### 🔌 Integrations")
@@ -402,14 +431,6 @@ with st.container(border=True):
                         st.cache_data.clear(); st.rerun()
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("**📱 Native Calendar (Mock)**")
-            cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
-            if cal_file:
-                mc, sm = calendar_sync.analyze_local_calendar(cal_file.getvalue().decode("utf-8"))
-                st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
-                st.success(f"Local Sync: {mc} events loaded.")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**⚡ Whoop Telemetry**")
             if not st.session_state.whoop_token:
                 oauth_state = secrets.token_urlsafe(16)
@@ -422,6 +443,14 @@ with st.container(border=True):
                     st.session_state.whoop_token = whoop.get_valid_access_token()
                     whoop.fetch_whoop_recovery.clear()
                     st.rerun() 
+                    
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("**📱 Native Calendar (Mock)**")
+            cal_file = st.file_uploader("Upload .ics", type=["ics"], label_visibility="collapsed")
+            if cal_file:
+                mc, sm = calendar_sync.analyze_local_calendar(cal_file.getvalue().decode("utf-8"))
+                st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
+                st.success(f"Local Sync: {mc} events loaded.")
 
 st.divider()
 
@@ -526,17 +555,20 @@ if st.session_state.get("latest_meal_analysis"):
 # -----------------------------------------------------------------------------
 # 6. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
-v_cols = st.columns(5)
-for i, view in enumerate(["Home", "Daily Briefing", "Total Life Metrics", "Schedule", "Sleep"]):
-    with v_cols[i]:
-        is_active = (st.session_state.active_view == view)
-        if st.button(view, use_container_width=True, type="primary" if is_active else "secondary"):
-            st.session_state.active_view = view
-            st.rerun()
+views = ["Home", "Briefing", "Metrics", "Trends", "Schedule", "Sleep"]
+v_cols = st.columns(len(views))
+for i, view in enumerate(views):
+    is_active = (st.session_state.active_view == view)
+    if v_cols[i].button(view, use_container_width=True, type="primary" if is_active else "secondary"):
+        st.session_state.active_view = view
+        st.rerun()
 st.markdown("---")
 
 # DYNAMIC LANDING DASHBOARD (Zero API Cost)
 if st.session_state.active_view == "Home":
+    st.info(f"**🔭 Macro Trend Highlight:** {st.session_state.latest_trend_insight}")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     c1, c2, c3 = st.columns(3)
     delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
     delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
@@ -553,7 +585,7 @@ if st.session_state.active_view == "Home":
         last_event_str = f"{last_event['type']}: {last_event['desc']}"
     c3.metric("📝 Latest Activity", last_event_str)
 
-elif st.session_state.active_view == "Daily Briefing":
+elif st.session_state.active_view == "Briefing":
     with st.spinner("Compiling Executive Briefing..."):
         try:
             sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
@@ -573,59 +605,124 @@ elif st.session_state.active_view == "Daily Briefing":
             st.success(f"**🎯 Action Directive:** {html.escape(data.get('action_directive', ''))}")
         except Exception as e: st.error(f"Failed: {e}")
 
-elif st.session_state.active_view == "Total Life Metrics":
-    c_dex = st.columns(2)
-    c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
-    c_dex[1].metric("Trend", latest_bg['Trend'])
+elif st.session_state.active_view == "Metrics":
+    top_container = st.container()
+    chart_container = st.container()
     
-    if st.session_state.whoop_token and whoop_metrics:
-        st.markdown("<br>", unsafe_allow_html=True)
-        c_wh1, c_wh2, c_wh3 = st.columns(3)
-        c_wh1.metric("Recovery", f"{w_rec}%")
-        c_wh2.metric("HRV", f"{w_hrv} ms")
-        c_wh3.metric("Resting HR", f"{w_rhr} bpm")
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-    tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed")
+    # Render time controls below the chart
+    st.markdown("<br>", unsafe_allow_html=True)
+    tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed", key="metrics_tw")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
     
-    fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
-    fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
-    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    with top_container:
+        with st.spinner("Synthesizing Trend..."):
+            std_val = p_df['Glucose_Value'].std()
+            safe_std = int(std_val) if pd.notna(std_val) else 0
+            metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
+            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
+            
+        c_dex = st.columns(2)
+        c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
+        c_dex[1].metric("Trend", latest_bg['Trend'])
+        
+        if st.session_state.whoop_token and whoop_metrics:
+            st.markdown("<br>", unsafe_allow_html=True)
+            c_wh1, c_wh2, c_wh3 = st.columns(3)
+            c_wh1.metric("Recovery", f"{w_rec}%")
+            c_wh2.metric("HRV", f"{w_hrv} ms")
+            c_wh3.metric("Resting HR", f"{w_rhr} bpm")
+            st.markdown("<br>", unsafe_allow_html=True)
     
-    with st.spinner("Synthesizing Trend..."):
-        std_val = p_df['Glucose_Value'].std()
-        safe_std = int(std_val) if pd.notna(std_val) else 0
-        metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
-        st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
+    with chart_container:
+        fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
+        fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+elif st.session_state.active_view == "Trends":
+    top_container = st.container()
+    chart_container = st.container()
+    
+    # Render time controls below the chart
+    st.markdown("<br>", unsafe_allow_html=True)
+    trend_window = st.radio("Select Horizon", ["1 Week", "1 Month", "3 Months"], horizontal=True, key="trends_tw")
+
+    days = 7 if trend_window == "1 Week" else 30 if trend_window == "1 Month" else 90
+    dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+    mock_tir = np.clip(np.random.normal(75, 8, days), 0, 100) # Simulating ~75% average TIR
+    mock_avg_bg = np.clip(np.random.normal(135, 15, days), 70, 200)
+
+    with top_container:
+        if st.button(f"🧠 Synthesize {trend_window} Patterns", type="primary", use_container_width=True):
+            with st.spinner("Analyzing historical telemetry, journal logs, and metabolic load..."):
+                try:
+                    # Extract all historical journals for context
+                    journal_text = " | ".join([f"{e['time']}: {e['desc']}" for e in st.session_state.event_log]) if st.session_state.event_log else "No recent manual logs."
+    
+                    sys_prompt = f"""You are my elite long-term performance endocrinologist.
+                    Analyze my {trend_window} metabolic trends based on my recent journals, current Whoop strain ({w_strain}), and average TIR of {int(mock_tir.mean())}%.
+                    Journal Context: {journal_text}
+                    Provide a 3-sentence deep insight identifying a hidden pattern (e.g., "Your TIR drops on days you log high stress and sleep poorly"). Speak directly to me ('you'). No markdown.
+                    """
+                    trend_insight = ask_claude(sys_prompt, [{"role": "user", "content": "Find my hidden metabolic patterns."}], max_tokens=200, parse_json=False)
+                    
+                    # Save to session state so it permanently appears on the Home dashboard
+                    st.session_state.latest_trend_insight = trend_insight
+                    st.success(f"**Agentic Synthesis:** {trend_insight}")
+                except Exception as e:
+                    st.error(f"Analysis failed: {e}")
+        elif st.session_state.latest_trend_insight != "No macro trend synthesized yet. Run an analysis in the Trends tab.":
+            st.success(f"**Latest Synthesis:** {st.session_state.latest_trend_insight}")
+
+    with chart_container:
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=dates, y=mock_tir, name="Time in Range (%)", marker_color="#8B5CF6", opacity=0.7))
+        fig.add_trace(go.Scatter(x=dates, y=mock_avg_bg, name="Avg Glucose (mg/dL)", mode="lines+markers", line=dict(color="#ED8796", width=3), yaxis="y2"))
+    
+        fig.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
+            height=350, margin=dict(l=0, r=0, t=30, b=0),
+            xaxis=dict(showgrid=False, fixedrange=True),
+            yaxis=dict(title="TIR (%)", range=[0, 100], showgrid=False, fixedrange=True),
+            yaxis2=dict(title="Avg BG", range=[50, 250], overlaying="y", side="right", showgrid=True, gridcolor='rgba(128,128,128,0.2)', fixedrange=True),
+            showlegend=False
+        )
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 elif st.session_state.active_view == "Schedule":
+    st.info(f"**Agentic Insight:** The Risk Engine is factoring in **{meeting_count} meetings** to adjust glycemic sensitivity.")
+    
     h1, h2, h3, h4 = st.columns(4)
     with h1: st.markdown(render_adaptive_schedule_card("1 HOUR", '✈️ SHIFTING' if st.session_state.current_context == 'Travel' else '🟢 SAFE'), unsafe_allow_html=True)
     with h2: st.markdown(render_adaptive_schedule_card("4 HOURS", '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'), unsafe_allow_html=True)
     with h3: st.markdown(render_adaptive_schedule_card("24 HOURS", '🟢 GOOD'), unsafe_allow_html=True)
     with h4: st.markdown(render_adaptive_schedule_card("MEETINGS", f"{meeting_count} ({'🔴 CRITICAL' if meeting_count>=7 else '🟡 ELEVATED' if meeting_count>=4 else '🟢 LIGHT'})"), unsafe_allow_html=True)
-    st.info(f"**Agentic Insight:** The Risk Engine is factoring in **{meeting_count} meetings** to adjust glycemic sensitivity.")
 
 elif st.session_state.active_view == "Sleep":
     if st.session_state.whoop_token and whoop_metrics:
-        st.metric("Sleep Perf", f"{w_sleep}%")
+        top_container = st.container()
+        chart_container = st.container()
         
-        tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed")
+        # Render time controls below the chart
+        st.markdown("<br>", unsafe_allow_html=True)
+        tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed", key="sleep_tw")
         o_df = full_data.tail({"4h": 48, "8h": 96, "12h": 144}[tw])
         
-        st.markdown("##### 🩸 Overnight Blood Sugar")
-        fig = go.Figure(go.Scatter(x=o_df['Timestamp'], y=o_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
-        fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
-        fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-        
-        with st.spinner("Synthesizing..."):
-            std_val = o_df['Glucose_Value'].std()
-            safe_std = int(std_val) if pd.notna(std_val) else 0
-            metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
-            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
+        with top_container:
+            with st.spinner("Synthesizing..."):
+                std_val = o_df['Glucose_Value'].std()
+                safe_std = int(std_val) if pd.notna(std_val) else 0
+                metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
+                st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
+    
+            st.metric("Sleep Perf", f"{w_sleep}%")
+            st.markdown("##### 🩸 Overnight Blood Sugar")
+            
+        with chart_container:
+            fig = go.Figure(go.Scatter(x=o_df['Timestamp'], y=o_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
+            fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
+            fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
