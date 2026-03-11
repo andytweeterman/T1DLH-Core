@@ -21,43 +21,54 @@ from openai import OpenAI
 import tempfile
 
 # -----------------------------------------------------------------------------
-# 1. SETUP & CLAUDE WRAPPER 
+# 1. SETUP & PAGE CONFIG
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="TLDH", page_icon="🧠", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TLDH Alpha", page_icon="🔒", layout="wide", initial_sidebar_state="collapsed")
 styles.apply_theme()
 styles.inject_custom_css()
 
 # UI POLISH: Shadows, Alignment Spacers, Premium Button CSS, and Matrix Grid
 st.markdown("""
     <style>
-    /* Global Button Styling with Drop Shadows */
     div[data-testid="stButton"] > button { border-radius: 50px !important; font-weight: 700 !important; transition: all 0.3s ease !important; letter-spacing: 0.5px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important; }
     div[data-testid="stButton"] > button[kind="primary"] { background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important; color: white !important; border: none !important; }
     div[data-testid="stButton"] > button[kind="primary"]:hover { box-shadow: 0 6px 15px rgba(139, 92, 246, 0.4) !important; transform: translateY(-2px); }
     div[data-testid="stButton"] > button[kind="secondary"] { border: 1px solid rgba(139, 92, 246, 0.3) !important; background-color: var(--secondary-background-color) !important; }
     div[data-testid="stButton"] > button[kind="secondary"]:hover { border-color: #8B5CF6 !important; color: #8B5CF6 !important; transform: translateY(-2px); }
-    
-    /* Popover Button specific shadow to make them pop */
     div[data-testid="stPopover"] > button { border-radius: 50px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important; border: 1px solid rgba(139, 92, 246, 0.2) !important; transition: all 0.3s ease !important;}
     div[data-testid="stPopover"] > button:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(139, 92, 246, 0.25) !important; border-color: #8B5CF6 !important; }
-    
-    /* Matrix Grid Override for Total Life Drivers */
-    .driver-pill { 
-        margin: 0 !important; 
-        width: 100% !important; 
-        justify-content: center !important; 
-        text-align: center !important; 
-        padding: 8px 4px !important;
-        font-size: 0.75rem !important;
-    }
-    
-    /* Dynamic Alignment Spacer (Only shows on Desktop) */
-    @media (max-width: 768px) {
-        .desktop-spacer { display: none !important; }
-    }
+    .driver-pill { margin: 0 !important; width: 100% !important; justify-content: center !important; text-align: center !important; padding: 8px 4px !important; font-size: 0.75rem !important; }
+    @media (max-width: 768px) { .desktop-spacer { display: none !important; } }
     </style>
 """, unsafe_allow_html=True)
 
+# -----------------------------------------------------------------------------
+# 1.5 THE VELVET ROPE (IP PROTECTION GATE)
+# -----------------------------------------------------------------------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #8B5CF6; font-size: 3rem;'>🔒 TLDH Private Alpha</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 30px;'>Agentic Engine IP is currently locked. Authorized access only.</p>", unsafe_allow_html=True)
+    
+    c1, c2, c3 = st.columns([1, 1.5, 1])
+    with c2:
+        with st.container(border=True):
+            pwd = st.text_input("Access Code", type="password", label_visibility="collapsed", placeholder="Enter Clearance Code...")
+            if st.button("Unlock Engine", use_container_width=True, type="primary"):
+                # Checks against Streamlit Secrets. If no secret is set yet, defaults to 'admin' so you don't lock yourself out.
+                if pwd == st.secrets.get("APP_PASSWORD", "admin"): 
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Access Denied. Incorrect Clearance Code.")
+    st.stop() # CRITICAL: This halts all further code execution until unlocked.
+
+# -----------------------------------------------------------------------------
+# 2. CLAUDE WRAPPER & CORE LOGIC
+# -----------------------------------------------------------------------------
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     ACTIVE_MODEL = 'claude-haiku-4-5' 
@@ -92,7 +103,6 @@ def render_adaptive_schedule_card(title, value):
     card_css = "background-color: var(--secondary-background-color); padding: 20px; border-radius: 20px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center;"
     return f"<div style='{card_css}'><div style='color:var(--text-secondary);font-size:0.85rem;font-weight:700;text-transform:uppercase;'>{title}</div><div style='font-weight:800; color:var(--text-color); font-size:1.3rem; margin-top:5px;'>{value}</div></div>"
 
-# --- DYNAMIC TONE ENGINE ---
 def get_claude_tone():
     ctx = st.session_state.current_context
     if ctx == "Stressed": return "gentle, concerned, and highly supportive. Encourage rest, restorative action, and self-compassion."
@@ -110,7 +120,7 @@ def get_time_remaining(end_time):
     return f"{mins//60}h {mins%60}m left" if mins >= 60 else f"{mins}m left"
 
 # -----------------------------------------------------------------------------
-# 2. STATE, TIMERS & EVENT LOGGING
+# 3. STATE, TIMERS & EVENT LOGGING
 # -----------------------------------------------------------------------------
 def load_ns_config():
     try:
@@ -149,9 +159,9 @@ def log_event(event_type, description):
         "type": event_type,
         "desc": description
     })
-    st.session_state.event_log = st.session_state.event_log[-15:] # Keep last 15
+    st.session_state.event_log = st.session_state.event_log[-15:]
 
-# Time-Decaying State Check & Recovery Handoff
+# Time-Decaying State Check
 if st.session_state.context_end_time and datetime.now() > st.session_state.context_end_time:
     if st.session_state.current_context == "Exercise":
         st.session_state.current_context = "Recovery"
@@ -206,7 +216,7 @@ except Exception as e:
     st.error(f"Data loading failed: {e}"); st.stop()
 
 # -----------------------------------------------------------------------------
-# 3. BUILD ACTIVE MEMORY (Context Injector)
+# 4. BUILD ACTIVE MEMORY (Context Injector)
 # -----------------------------------------------------------------------------
 active_memory_list = []
 if st.session_state.get("latest_meal_analysis"):
@@ -220,7 +230,6 @@ if st.session_state.current_context in ["Exercise", "Recovery"]:
 elif w_strain > 12.0:
     active_memory_list.append(f"Notable daily Whoop strain recorded today: {w_strain}.")
 
-# Tie recent Journal entries directly into Claude's memory
 recent_journals = [e for e in st.session_state.event_log if e['type'] in ["🍽️ Meal", "💊 Medication", "🏃‍♂️ Exercise", "📝 Other"]]
 if recent_journals:
     latest_journal = recent_journals[-1]
@@ -229,9 +238,8 @@ if recent_journals:
 context_memory_string = " | ".join(active_memory_list) if active_memory_list else "No active external events logged."
 
 # -----------------------------------------------------------------------------
-# 4. AUTO-DETECT INTERCEPTS & UI HEADERS
+# 5. AUTO-DETECT INTERCEPTS & UI HEADERS
 # -----------------------------------------------------------------------------
-# POLISHED HEADER: Glass-morphic gradient container
 st.markdown(f"""
     <div style="margin-top: 10px; margin-bottom: 25px; padding: 24px 30px; background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(109,40,217,0.03)); border: 1px solid rgba(139,92,246,0.2); border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.04);">
         <div style="font-size: 34px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">Total Life Download Hub</div>
@@ -344,7 +352,7 @@ with st.container(border=True):
                             st.warning("🎙️ **OpenAI API Key Missing!** Add OPENAI_API_KEY to your Streamlit secrets to enable Speech-to-Text.")
                 
                 st.divider()
-                with st.form("journal_form", clear_on_submit=True):
+                with st.form("companion_journal_form", clear_on_submit=True):
                     form_text = st.text_area("Or type your observation:", placeholder="E.g., 'Just finished a heavy lift.'", label_visibility="collapsed")
                     form_submit = st.form_submit_button("Synthesize Telemetry", use_container_width=True)
                 
@@ -400,6 +408,7 @@ with st.container(border=True):
                         st.markdown(f"**{event['time']}** - {event['type']}<br><span style='color:gray; font-size:0.85em;'>{event['desc']}</span>", unsafe_allow_html=True)
                         
             st.divider()
+            
             st.markdown("##### 📍 Context Settings")
             with st.form("context_override_form"):
                 new_ctx = st.selectbox("Force Context Mode:", ["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"], index=["Normal", "Stressed", "Recovery", "Sick", "Exercise", "Project", "Travel"].index(st.session_state.current_context))
@@ -455,7 +464,7 @@ with st.container(border=True):
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 5. EVENT PROCESSORS (SEMANTIC NLP DETECT)
+# 6. EVENT PROCESSORS (SEMANTIC NLP DETECT)
 # -----------------------------------------------------------------------------
 if 'text_submit' in locals() and text_submit and text_input:
     with st.spinner("Correlating subjective report with objective telemetry..."):
@@ -553,7 +562,7 @@ if st.session_state.get("latest_meal_analysis"):
     st.divider()
 
 # -----------------------------------------------------------------------------
-# 6. NAVIGATION & RENDER VIEWS
+# 7. NAVIGATION & RENDER VIEWS
 # -----------------------------------------------------------------------------
 views = ["Home", "Briefing", "Metrics", "Trends", "Schedule", "Sleep"]
 v_cols = st.columns(len(views))
@@ -609,7 +618,6 @@ elif st.session_state.active_view == "Metrics":
     top_container = st.container()
     chart_container = st.container()
     
-    # Render time controls below the chart
     st.markdown("<br>", unsafe_allow_html=True)
     tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed", key="metrics_tw")
     p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
@@ -643,20 +651,18 @@ elif st.session_state.active_view == "Trends":
     top_container = st.container()
     chart_container = st.container()
     
-    # Render time controls below the chart
     st.markdown("<br>", unsafe_allow_html=True)
     trend_window = st.radio("Select Horizon", ["1 Week", "1 Month", "3 Months"], horizontal=True, key="trends_tw")
 
     days = 7 if trend_window == "1 Week" else 30 if trend_window == "1 Month" else 90
     dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
-    mock_tir = np.clip(np.random.normal(75, 8, days), 0, 100) # Simulating ~75% average TIR
+    mock_tir = np.clip(np.random.normal(75, 8, days), 0, 100) 
     mock_avg_bg = np.clip(np.random.normal(135, 15, days), 70, 200)
 
     with top_container:
         if st.button(f"🧠 Synthesize {trend_window} Patterns", type="primary", use_container_width=True):
             with st.spinner("Analyzing historical telemetry, journal logs, and metabolic load..."):
                 try:
-                    # Extract all historical journals for context
                     journal_text = " | ".join([f"{e['time']}: {e['desc']}" for e in st.session_state.event_log]) if st.session_state.event_log else "No recent manual logs."
     
                     sys_prompt = f"""You are my elite long-term performance endocrinologist.
@@ -666,7 +672,6 @@ elif st.session_state.active_view == "Trends":
                     """
                     trend_insight = ask_claude(sys_prompt, [{"role": "user", "content": "Find my hidden metabolic patterns."}], max_tokens=200, parse_json=False)
                     
-                    # Save to session state so it permanently appears on the Home dashboard
                     st.session_state.latest_trend_insight = trend_insight
                     st.success(f"**Agentic Synthesis:** {trend_insight}")
                 except Exception as e:
@@ -703,7 +708,6 @@ elif st.session_state.active_view == "Sleep":
         top_container = st.container()
         chart_container = st.container()
         
-        # Render time controls below the chart
         st.markdown("<br>", unsafe_allow_html=True)
         tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed", key="sleep_tw")
         o_df = full_data.tail({"4h": 48, "8h": 96, "12h": 144}[tw])
