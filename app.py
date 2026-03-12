@@ -1,3 +1,13 @@
+import os
+import time
+
+# FIX: Force Streamlit Cloud Server to Eastern Time (America/New_York)
+os.environ['TZ'] = 'America/New_York'
+try:
+    time.tzset()
+except AttributeError:
+    pass # Windows fallback
+
 import html
 import secrets
 import streamlit as st
@@ -13,7 +23,6 @@ import requests
 import re
 import pandas as pd
 import numpy as np
-import os
 from datetime import datetime, timedelta
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
@@ -58,13 +67,12 @@ if not st.session_state.authenticated:
         with st.container(border=True):
             pwd = st.text_input("Access Code", type="password", label_visibility="collapsed", placeholder="Enter Clearance Code...")
             if st.button("Unlock Engine", use_container_width=True, type="primary"):
-                # Checks against Streamlit Secrets. If no secret is set yet, defaults to 'admin' so you don't lock yourself out.
                 if pwd == st.secrets.get("APP_PASSWORD", "admin"): 
                     st.session_state.authenticated = True
                     st.rerun()
                 else:
                     st.error("Access Denied. Incorrect Clearance Code.")
-    st.stop() # CRITICAL: This halts all further code execution until unlocked.
+    st.stop() 
 
 # -----------------------------------------------------------------------------
 # 2. CLAUDE WRAPPER & CORE LOGIC
