@@ -51,7 +51,8 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center; color: #8B5CF6; font-size: 3rem;'>🔒 TLDH Private Alpha</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 30px;'>Agentic Engine IP is currently locked. Authorized access only.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 15px;'>Agentic Engine IP is currently locked. Authorized access only.</p>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align: center; margin-bottom: 30px;'><span style='background-color: rgba(76, 175, 80, 0.1); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; letter-spacing: 1px;'>🟢 USPTO PATENT PENDING (App No. 64/004,105)</span></div>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns([1, 1.5, 1])
     with c2:
@@ -69,6 +70,18 @@ if not st.session_state.authenticated:
 # -----------------------------------------------------------------------------
 # 2. CLAUDE WRAPPER & CORE LOGIC
 # -----------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown(
+        """
+        <div style="background-color: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #4CAF50; margin-bottom: 20px;">
+            <span style="color: #4CAF50; font-weight: 800; font-size: 0.95em; letter-spacing: 1px;">🟢 PATENT PENDING</span><br>
+            <span style="color: #888888; font-size: 0.75em; font-weight: 600;">App No. 64/004,105</span><br>
+            <span style="color: #888888; font-size: 0.75em;">Closed-Loop Logic Engine Protected</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 try:
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     ACTIVE_MODEL = 'claude-haiku-4-5' 
@@ -242,7 +255,10 @@ context_memory_string = " | ".join(active_memory_list) if active_memory_list els
 # -----------------------------------------------------------------------------
 st.markdown(f"""
     <div style="margin-top: 10px; margin-bottom: 25px; padding: 24px 30px; background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(109,40,217,0.03)); border: 1px solid rgba(139,92,246,0.2); border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.04);">
-        <div style="font-size: 34px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">Total Life Download Hub</div>
+        <div style="font-size: 34px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">
+            Total Life Download Hub
+            <span style="font-size: 14px; background-color: rgba(76, 175, 80, 0.1); color: #4CAF50; padding: 4px 10px; border-radius: 20px; border: 1px solid #4CAF50; vertical-align: middle; margin-left: 15px; -webkit-text-fill-color: #4CAF50; font-weight: bold; letter-spacing: 0.5px;">🟢 PATENT PENDING: 64/004,105</span>
+        </div>
         <div style="color: var(--text-secondary); font-weight: 600; font-size: 1.15rem; margin-top: 4px; letter-spacing: 0.5px;">Agentic Risk Management Engine</div>
     </div>
 """, unsafe_allow_html=True)
@@ -729,4 +745,10 @@ elif st.session_state.active_view == "Sleep":
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     else: st.info("🔗 Open ☰ Menu to connect Whoop.")
 
-st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
+# Updated Custom Footer with App Number Override
+st.markdown("""
+<div style='text-align: center; color: var(--text-secondary); margin-top: 50px; font-size: 12px; opacity: 0.7;'>
+    TLDH Core Architecture | Experimental AI. Not medical advice.<br>
+    <strong>USPTO Patent Pending: Application No. 64/004,105</strong>
+</div>
+""", unsafe_allow_html=True)
