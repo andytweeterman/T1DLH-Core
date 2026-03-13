@@ -20,6 +20,17 @@ from audio_recorder_streamlit import audio_recorder
 from openai import OpenAI
 import tempfile
 
+# =============================================================================
+# GLOBAL SAFETY GUARDRAILS (FDA SaMD AVOIDANCE)
+# =============================================================================
+CLINICAL_GUARDRAIL = """
+CRITICAL SYSTEM INSTRUCTION: YOU ARE A BEHAVIORAL WELLNESS COACH AND RISK MANAGEMENT ENGINE. YOU ARE NOT A DOCTOR. 
+UNDER NO CIRCUMSTANCES ARE YOU PERMITTED TO PRESCRIBE, SUGGEST, OR CALCULATE DOSAGES FOR INSULIN OR ANY OTHER MEDICATION. 
+NEVER SAY "TAKE X UNITS OF INSULIN". NEVER DISCUSS INSULIN-TO-CARB RATIOS. 
+IF YOU DO THIS, YOU VIOLATE FEDERAL FDA REGULATIONS. 
+ALL ACTION DIRECTIVES MUST BE STRICTLY BEHAVIORAL (E.G., WALKING, RESTING) OR NUTRITIONAL (E.G., CONSUME 15G OF FAST ACTING CARBS, EAT PROTEIN).
+"""
+
 # -----------------------------------------------------------------------------
 # 1. SETUP & PAGE CONFIG
 # -----------------------------------------------------------------------------
@@ -51,8 +62,7 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center; color: #8B5CF6; font-size: 3rem;'>🔒 TLDH Private Alpha</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 15px;'>Agentic Engine IP is currently locked. Authorized access only.</p>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align: center; margin-bottom: 30px;'><span style='background-color: rgba(76, 175, 80, 0.1); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; letter-spacing: 1px;'>🟢 USPTO PATENT PENDING (App No. 64/004,105)</span></div>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 30px;'>Agentic Engine IP is currently locked. Authorized access only.</p>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns([1, 1.5, 1])
     with c2:
@@ -94,13 +104,15 @@ except Exception:
     openai_client = None
 
 def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=True):
+    # Inject universal guardrail into every call to safely sandbox the AI
+    safe_sys = system_instruction + "\n\n" + CLINICAL_GUARDRAIL
     try:
-        res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=system_instruction, messages=user_messages)
+        res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=safe_sys, messages=user_messages)
         text = res.content[0].text.strip()
         return json.loads(text.replace("```json", "").replace("```", "").strip()) if parse_json else text
     except Exception as e:
         if "not_found_error" in str(e) or "404" in str(e):
-            raise Exception(f"**API Account Locked:** Your Anthropic account cannot access '{ACTIVE_MODEL}'. You must add at least $5 in prepaid credits at console.anthropic.com/settings/billing to unlock API access to Claude 3 models.")
+            raise Exception(f"**API Account Locked:** Check Anthropic billing.")
         raise e
 
 def get_ai_chart_summary(chart_type, time_window, metrics, active_memory=""):
@@ -257,7 +269,6 @@ st.markdown(f"""
     <div style="margin-top: 10px; margin-bottom: 25px; padding: 24px 30px; background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(109,40,217,0.03)); border: 1px solid rgba(139,92,246,0.2); border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.04);">
         <div style="font-size: 34px; font-weight: 900; background: linear-gradient(135deg, #8B5CF6, #6D28D9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; line-height: 1.2;">
             Total Life Download Hub
-            <span style="font-size: 14px; background-color: rgba(76, 175, 80, 0.1); color: #4CAF50; padding: 4px 10px; border-radius: 20px; border: 1px solid #4CAF50; vertical-align: middle; margin-left: 15px; -webkit-text-fill-color: #4CAF50; font-weight: bold; letter-spacing: 0.5px;">🟢 PATENT PENDING: 64/004,105</span>
         </div>
         <div style="color: var(--text-secondary); font-weight: 600; font-size: 1.15rem; margin-top: 4px; letter-spacing: 0.5px;">Agentic Risk Management Engine</div>
     </div>
@@ -492,13 +503,14 @@ if 'text_submit' in locals() and text_submit and text_input:
             Correlate my text with the telemetry and memory. 
             Speak to me as 'you'. Tone should be {get_claude_tone()}. NEVER refer to me as "the patient".
             Return ONLY a valid JSON object with EXACTLY these keys:
-            - "reply": "A contextual response."
+            - "reply": "A contextual response. Include clinical escalation if anomalous symptoms persist."
             - "summary": "3 words."
             - "scores": {{"bio_strain": 5, "cog_load": 5}}
             - "impact_prediction": "1-sentence prediction."
             - "suggested_mode": "Exercise", "Recovery", "Stressed", "Sick", "Project", "Travel", or "Normal" (Detect from my text)
             - "suggested_duration_hours": 1.5"""
             res_data = ask_claude(sys, [{"role": "user", "content": text_input}])
+            res_data["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M")
             st.session_state.journal_history = [res_data]
             log_event("🎙️ Note", res_data.get("summary", "Logged observation."))
             st.session_state.mic_active = False 
@@ -589,7 +601,9 @@ for i, view in enumerate(views):
         st.rerun()
 st.markdown("---")
 
-# DYNAMIC LANDING DASHBOARD (Zero API Cost)
+# -----------------------------------------------------------------------------
+# DYNAMIC DASHBOARD VIEWS
+# -----------------------------------------------------------------------------
 if st.session_state.active_view == "Home":
     st.info(f"**🔭 Macro Trend Highlight:** {st.session_state.latest_trend_insight}")
     st.markdown("<br>", unsafe_allow_html=True)
@@ -720,35 +734,29 @@ elif st.session_state.active_view == "Schedule":
     with h4: st.markdown(render_adaptive_schedule_card("MEETINGS", f"{meeting_count} ({'🔴 CRITICAL' if meeting_count>=7 else '🟡 ELEVATED' if meeting_count>=4 else '🟢 LIGHT'})"), unsafe_allow_html=True)
 
 elif st.session_state.active_view == "Sleep":
+    st.markdown("### 🌙 Sleep & Recovery Correlation")
     if st.session_state.whoop_token and whoop_metrics:
-        top_container = st.container()
-        chart_container = st.container()
+        sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 85)
+        overnight_df = full_data.tail(96)
+        std_dev = int(overnight_df['Glucose_Value'].std())
+        safe_std = int(std_val) if pd.notna(std_val) else 0
         
-        st.markdown("<br>", unsafe_allow_html=True)
-        tw = st.radio("Range", ["4h", "8h", "12h"], index=1, horizontal=True, label_visibility="collapsed", key="sleep_tw")
-        o_df = full_data.tail({"4h": 48, "8h": 96, "12h": 144}[tw])
+        s_col1, s_col2 = st.columns(2)
+        with s_col1: st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
+        with s_col2: st.metric("Overnight Volatility", f"±{std_dev} mg/dL", delta="Stable" if std_dev < 15 else "Erratic", delta_color="normal" if std_dev < 15 else "inverse")
+        st.markdown("---")
         
-        with top_container:
-            with st.spinner("Synthesizing..."):
-                std_val = o_df['Glucose_Value'].std()
-                safe_std = int(std_val) if pd.notna(std_val) else 0
-                metrics_str = f"Avg: {int(o_df['Glucose_Value'].mean())}, Min: {int(o_df['Glucose_Value'].min())}, Max: {int(o_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(o_df['Glucose_Value'].iloc[-1])}"
-                st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary(f'Overnight Glucose (with {w_sleep}% Sleep)', tw, metrics_str, context_memory_string)}")
-    
-            st.metric("Sleep Perf", f"{w_sleep}%")
-            st.markdown("##### 🩸 Overnight Blood Sugar")
-            
-        with chart_container:
-            fig = go.Figure(go.Scatter(x=o_df['Timestamp'], y=o_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
-            fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
-            fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-    else: st.info("🔗 Open ☰ Menu to connect Whoop.")
+        sleep_fig = go.Figure()
+        sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
+        sleep_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); sleep_fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
+        sleep_fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+        st.plotly_chart(sleep_fig, use_container_width=True, config={'displayModeBar': False})
+        
+        with st.spinner("Synthesizing Sleep Impact..."):
+            metrics_str = f"Avg: {int(overnight_df['Glucose_Value'].mean())}, Min: {int(overnight_df['Glucose_Value'].min())}, Max: {int(overnight_df['Glucose_Value'].max())}, Std Dev: {safe_std}"
+            # Safe call hitting the Clinical Guardrail wrapper
+            st.success(f"**🤖 Agentic Insight:** {get_ai_chart_summary(f'Overnight Glucose (with {sleep_perf}% Sleep Performance)', '12h', metrics_str, context_memory_string)}")
+    else:
+        st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
 
-# Updated Custom Footer with App Number Override
-st.markdown("""
-<div style='text-align: center; color: var(--text-secondary); margin-top: 50px; font-size: 12px; opacity: 0.7;'>
-    TLDH Core Architecture | Experimental AI. Not medical advice.<br>
-    <strong>USPTO Patent Pending: Application No. 64/004,105</strong>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
