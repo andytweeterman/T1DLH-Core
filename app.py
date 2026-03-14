@@ -69,13 +69,12 @@ if not st.session_state.authenticated:
         with st.container(border=True):
             pwd = st.text_input("Access Code", type="password", label_visibility="collapsed", placeholder="Enter Clearance Code...")
             if st.button("Unlock Engine", use_container_width=True, type="primary"):
-                # Checks against Streamlit Secrets. If no secret is set yet, defaults to 'admin' so you don't lock yourself out.
                 if pwd == st.secrets.get("APP_PASSWORD", "admin"): 
                     st.session_state.authenticated = True
                     st.rerun()
                 else:
                     st.error("Access Denied. Incorrect Clearance Code.")
-    st.stop() # CRITICAL: This halts all further code execution until unlocked.
+    st.stop()
 
 # -----------------------------------------------------------------------------
 # 2. CLAUDE WRAPPER & CORE LOGIC
@@ -104,14 +103,12 @@ except Exception:
     openai_client = None
 
 def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=True):
-    # Inject universal guardrail into every call to safely sandbox the AI
     safe_sys = system_instruction + "\n\n" + CLINICAL_GUARDRAIL
     try:
         res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=safe_sys, messages=user_messages)
         text = res.content[0].text.strip()
         if parse_json:
             text = text.replace("```json", "").replace("```", "").strip()
-            # Robust RegEx to extract only the JSON object, ignoring conversational padding
             match = re.search(r'\{.*\}', text, re.DOTALL)
             if match:
                 text = match.group(0)
@@ -151,6 +148,16 @@ def get_time_remaining(end_time):
     mins = int(diff.total_seconds() / 60)
     return f"{mins//60}h {mins%60}m left" if mins >= 60 else f"{mins}m left"
 
+# --- NEW CLINICAL METRICS (GMI & TIR) ---
+def calculate_gmi(mean_glucose):
+    if pd.isna(mean_glucose): return 0.0
+    return round(3.31 + (0.02392 * mean_glucose), 1)
+
+def calculate_tir(df):
+    if len(df) == 0: return 0.0
+    in_range = len(df[(df['Glucose_Value'] >= 70) & (df['Glucose_Value'] <= 180)])
+    return round((in_range / len(df)) * 100, 1)
+
 # -----------------------------------------------------------------------------
 # 3. STATE, TIMERS & EVENT LOGGING
 # -----------------------------------------------------------------------------
@@ -179,6 +186,7 @@ if "muted_intercepts" not in st.session_state: st.session_state.muted_intercepts
 if "_toast" not in st.session_state: st.session_state._toast = None
 if "active_view" not in st.session_state: st.session_state.active_view = "Home"
 if "latest_trend_insight" not in st.session_state: st.session_state.latest_trend_insight = "No macro trend synthesized yet. Run an analysis in the Trends tab."
+if "show_dossier" not in st.session_state: st.session_state.show_dossier = False
 
 # Consume transient toast message
 if st.session_state._toast:
@@ -494,6 +502,13 @@ with st.container(border=True):
                 mc, sm = calendar_sync.analyze_local_calendar(cal_file.getvalue().decode("utf-8"))
                 st.session_state.local_meeting_count, st.session_state.local_speaker_mode = mc, sm
                 st.success(f"Local Sync: {mc} events loaded.")
+                
+            # --- DOCTOR REPORT GENERATION BUTTON ---
+            st.divider()
+            st.markdown("##### 🩺 Clinical Export")
+            if st.button("📄 Create a Report for my Doctor", use_container_width=True):
+                st.session_state.show_dossier = True
+                st.rerun()
 
 st.divider()
 
@@ -638,220 +653,256 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 # DYNAMIC DASHBOARD VIEWS
 # -----------------------------------------------------------------------------
-if st.session_state.active_view == "Home":
-    st.info(f"**🔭 Macro Trend Highlight:** {st.session_state.latest_trend_insight}")
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    c1, c2, c3 = st.columns(3)
-    delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
-    delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
-    c1.metric("🩸 Blood Sugar", f"{int(latest_bg['Glucose_Value'])} mg/dL", f"{delta_str} ({latest_bg['Trend']})")
-    
-    if st.session_state.whoop_token and whoop_metrics:
-        c2.metric("⚡ Systemic Strain", f"{w_strain}", f"Recovery: {w_rec}%")
-    else:
-        c2.metric("⚡ Systemic Strain", "N/A", "Whoop Not Synced")
+if st.session_state.show_dossier:
+    with st.container(border=True):
+        st.markdown("## 🩺 Clinical ERM Dossier")
+        st.caption(f"Generated on {datetime.now().strftime('%B %d, %Y')} | Confidential Medical Data")
         
-    last_event_str = "No events logged today."
-    if st.session_state.event_log:
-        last_event = st.session_state.event_log[-1]
-        last_event_str = f"{last_event['type']}: {last_event['desc']}"
-    c3.metric("📝 Latest Activity", last_event_str)
+        dos_c1, dos_c2, dos_c3, dos_c4 = st.columns(4)
+        d_gmi = calculate_gmi(full_data['Glucose_Value'].mean())
+        d_tir = calculate_tir(full_data)
+        dos_c1.metric("Est. GMI", f"{d_gmi}%")
+        dos_c2.metric("Time in Range (70-180)", f"{d_tir}%")
+        dos_c3.metric("Avg Sleep Perf", f"{w_sleep}%" if w_sleep else "N/A")
+        dos_c4.metric("Avg Daily Strain", f"{w_strain}" if w_strain else "N/A")
+        
+        with st.spinner("Synthesizing clinical report..."):
+            try:
+                sys_prompt = f"""You are an elite endocrinologist generating a clinical dossier for a patient's medical file.
+                Metrics: GMI {d_gmi}%, TIR {d_tir}%, Sleep Performance {w_sleep}%, Strain {w_strain}.
+                Analyze this data from an Enterprise Risk Management perspective. Output a 3-paragraph clinical summary highlighting systemic correlations (e.g., how their sleep and strain impact their glycemic volatility) and suggest 2 behavioral interventions. Speak in the third person ('The patient'). Do not prescribe insulin."""
+                dossier_text = ask_claude(sys_prompt, [{"role": "user", "content": "Generate the clinical dossier."}], max_tokens=500, parse_json=False)
+                st.info(dossier_text)
+            except Exception as e:
+                st.error(f"Failed to generate synthesis: {e}")
+        
+        if st.button("Close Report", type="primary"):
+            st.session_state.show_dossier = False
+            st.rerun()
+        st.markdown("---")
 
-    # --- PREDICTIVE CONE OF UNCERTAINTY ---
-    st.markdown("---")
-    st.markdown("### 📈 Predictive Volatility Horizon")
-    st.caption("Fusing primary biometric momentum with systemic strain to visualize the future T+3 hour risk surface.")
-    
-    # Calculate Cone Boundaries
-    strain_multiplier = (w_strain / 21.0) * 30
-    sleep_multiplier = 20 if w_sleep < 70 else (10 if w_sleep < 85 else 0)
-    max_divergence = 15 + strain_multiplier + sleep_multiplier
-    
-    current_g = latest_bg['Glucose_Value']
-    t0 = latest_bg['Timestamp']
-    t_end = t0 + timedelta(hours=3)
-    
-    # Determine baseline trajectory
-    trend_val = 15 if "Rising" in latest_bg['Trend'] else (-15 if "Falling" in latest_bg['Trend'] else 5)
-    future_g = current_g + trend_val
-    
-    cone_fig = go.Figure()
-    
-    # 1. Plot Historical Data (Past 2 hours)
-    past_df = full_data.tail(24) # 2 hours of 5-min intervals
-    cone_fig.add_trace(go.Scatter(
-        x=past_df['Timestamp'], y=past_df['Glucose_Value'], 
-        mode='lines', name='Historical', 
-        line=dict(color='#10B981', width=3)
-    ))
-    
-    # 2. Plot the Cone Area (Risk Surface)
-    cone_fig.add_trace(go.Scatter(
-        x=[t0, t_end, t_end, t0],
-        y=[current_g, future_g + max_divergence, future_g - max_divergence, current_g],
-        fill='toself',
-        fillcolor='rgba(99, 102, 241, 0.15)',
-        line=dict(color='rgba(255,255,255,0)'),
-        hoverinfo="skip",
-        name='Risk Surface'
-    ))
-    
-    # 3. Plot Midline Prediction (Dashed)
-    cone_fig.add_trace(go.Scatter(
-        x=[t0, t_end], y=[current_g, future_g],
-        mode='lines', name='Predicted Path',
-        line=dict(color='#6366F1', width=2, dash='dash')
-    ))
-    
-    # Chart Formatting (Target Ranges)
-    cone_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.3, layer="below")
-    cone_fig.add_hline(y=70, line_dash="dot", line_color="#ED8796", layer="below")
-    cone_fig.add_hline(y=180, line_dash="dot", line_color="#EED49F", layer="below")
-    
-    cone_fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
-        height=300, margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(showgrid=False, fixedrange=True),
-        yaxis=dict(title="mg/dL", range=[40, 260], showgrid=True, gridcolor='rgba(128,128,128,0.2)', fixedrange=True),
-        showlegend=False
-    )
-    st.plotly_chart(cone_fig, use_container_width=True, config={'displayModeBar': False})
-    
-    st.info(f"**Agentic Insight:** Volatility divergence is currently **±{int(max_divergence)} mg/dL**, influenced by a Whoop Strain multiplier of **{w_strain}** and recent sleep recovery metrics.")
-
-elif st.session_state.active_view == "Briefing":
-    with st.spinner("Compiling Executive Briefing..."):
-        try:
-            sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
-            Metrics: {st.session_state.current_context} Context, {meeting_count} meetings today, Whoop Recovery: {w_rec}%, Current BG: {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). 
-            Active Memory Context: {context_memory_string}.
-            Clinical Guardrails: Target range is 70-180 mg/dL. Any spike above 180 is considered high and requires attention.
-            CRITICAL: If the Active Memory explains the current glucose trend, explicitly acknowledge this.
-            Synthesize this into a proactive daily briefing. Focus on cognitive load management and metabolic forecasting. Speak directly to me using 'you'.
-            Return ONLY a valid JSON object with these EXACT keys: 
-            'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop, BG, and Memory), 
-            'schedule_friction' (how my calendar density impacts my glucose management today), 
-            'action_directive' (one clear, proactive step to take right now)."""
-            
-            data = ask_claude(sys, [{"role": "user", "content": "Generate my morning briefing."}])
-            st.info(f"**🧬 Metabolic Baseline:** {html.escape(data.get('metabolic_baseline', ''))}")
-            st.warning(f"**🗓️ Schedule Friction:** {html.escape(data.get('schedule_friction', ''))}")
-            st.success(f"**🎯 Action Directive:** {html.escape(data.get('action_directive', ''))}")
-        except Exception as e: st.error(f"Failed: {e}")
-
-elif st.session_state.active_view == "Metrics":
-    top_container = st.container()
-    chart_container = st.container()
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed", key="metrics_tw")
-    p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
-    
-    with top_container:
-        with st.spinner("Synthesizing Trend..."):
-            std_val = p_df['Glucose_Value'].std()
-            safe_std = int(std_val) if pd.notna(std_val) else 0
-            metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
-            st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
-            
-        c_dex = st.columns(2)
-        c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
-        c_dex[1].metric("Trend", latest_bg['Trend'])
+else:
+    if st.session_state.active_view == "Home":
+        st.info(f"**🔭 Macro Trend Highlight:** {st.session_state.latest_trend_insight}")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        c1, c2, c3, c4 = st.columns(4)
+        delta = int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value'])
+        delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
+        c1.metric("🩸 Blood Sugar", f"{int(latest_bg['Glucose_Value'])} mg/dL", f"{delta_str} ({latest_bg['Trend']})")
+        
+        gmi = calculate_gmi(full_data['Glucose_Value'].mean())
+        c2.metric("📊 Est. GMI", f"{gmi}%", "Target: < 7.0%" if gmi < 7.0 else "Above Target", delta_color="normal" if gmi < 7.0 else "inverse")
         
         if st.session_state.whoop_token and whoop_metrics:
-            st.markdown("<br>", unsafe_allow_html=True)
-            c_wh1, c_wh2, c_wh3 = st.columns(3)
-            c_wh1.metric("Recovery", f"{w_rec}%")
-            c_wh2.metric("HRV", f"{w_hrv} ms")
-            c_wh3.metric("Resting HR", f"{w_rhr} bpm")
-            st.markdown("<br>", unsafe_allow_html=True)
+            c3.metric("⚡ Systemic Strain", f"{w_strain}", f"Recovery: {w_rec}%")
+        else:
+            c3.metric("⚡ Systemic Strain", "N/A", "Whoop Not Synced")
+            
+        last_event_str = "No events logged today."
+        if st.session_state.event_log:
+            last_event = st.session_state.event_log[-1]
+            last_event_str = f"{last_event['type']}: {last_event['desc']}"
+        c4.metric("📝 Latest Activity", last_event_str)
     
-    with chart_container:
-        fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
-        fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-elif st.session_state.active_view == "Trends":
-    top_container = st.container()
-    chart_container = st.container()
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    trend_window = st.radio("Select Horizon", ["1 Week", "1 Month", "3 Months"], horizontal=True, key="trends_tw")
-
-    days = 7 if trend_window == "1 Week" else 30 if trend_window == "1 Month" else 90
-    dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
-    mock_tir = np.clip(np.random.normal(75, 8, days), 0, 100) 
-    mock_avg_bg = np.clip(np.random.normal(135, 15, days), 70, 200)
-
-    with top_container:
-        if st.button(f"🧠 Synthesize {trend_window} Patterns", type="primary", use_container_width=True):
-            with st.spinner("Analyzing historical telemetry, journal logs, and metabolic load..."):
-                try:
-                    journal_text = " | ".join([f"{e['time']}: {e['desc']}" for e in st.session_state.event_log]) if st.session_state.event_log else "No recent manual logs."
-    
-                    sys_prompt = f"""You are my elite long-term performance endocrinologist.
-                    Analyze my {trend_window} metabolic trends based on my recent journals, current Whoop strain ({w_strain}), and average TIR of {int(mock_tir.mean())}%.
-                    Journal Context: {journal_text}
-                    Provide a 3-sentence deep insight identifying a hidden pattern (e.g., "Your TIR drops on days you log high stress and sleep poorly"). Speak directly to me ('you'). No markdown.
-                    """
-                    trend_insight = ask_claude(sys_prompt, [{"role": "user", "content": "Find my hidden metabolic patterns."}], max_tokens=200, parse_json=False)
-                    
-                    st.session_state.latest_trend_insight = trend_insight
-                    st.success(f"**Agentic Synthesis:** {trend_insight}")
-                except Exception as e:
-                    st.error(f"Analysis failed: {e}")
-        elif st.session_state.latest_trend_insight != "No macro trend synthesized yet. Run an analysis in the Trends tab.":
-            st.success(f"**Latest Synthesis:** {st.session_state.latest_trend_insight}")
-
-    with chart_container:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=dates, y=mock_tir, name="Time in Range (%)", marker_color="#8B5CF6", opacity=0.7))
-        fig.add_trace(go.Scatter(x=dates, y=mock_avg_bg, name="Avg Glucose (mg/dL)", mode="lines+markers", line=dict(color="#ED8796", width=3), yaxis="y2"))
-    
-        fig.update_layout(
+        # --- PREDICTIVE CONE OF UNCERTAINTY ---
+        st.markdown("---")
+        st.markdown("### 📈 Predictive Volatility Horizon")
+        st.caption("Fusing primary biometric momentum with systemic strain to visualize the future T+3 hour risk surface.")
+        
+        # Calculate Cone Boundaries
+        strain_multiplier = (w_strain / 21.0) * 30
+        sleep_multiplier = 20 if w_sleep < 70 else (10 if w_sleep < 85 else 0)
+        max_divergence = 15 + strain_multiplier + sleep_multiplier
+        
+        current_g = latest_bg['Glucose_Value']
+        t0 = latest_bg['Timestamp']
+        t_end = t0 + timedelta(hours=3)
+        
+        # Determine baseline trajectory
+        trend_val = 15 if "Rising" in latest_bg['Trend'] else (-15 if "Falling" in latest_bg['Trend'] else 5)
+        future_g = current_g + trend_val
+        
+        cone_fig = go.Figure()
+        
+        # 1. Plot Historical Data (Past 2 hours)
+        past_df = full_data.tail(24) # 2 hours of 5-min intervals
+        cone_fig.add_trace(go.Scatter(
+            x=past_df['Timestamp'], y=past_df['Glucose_Value'], 
+            mode='lines', name='Historical', 
+            line=dict(color='#10B981', width=3)
+        ))
+        
+        # 2. Plot the Cone Area (Risk Surface)
+        cone_fig.add_trace(go.Scatter(
+            x=[t0, t_end, t_end, t0],
+            y=[current_g, future_g + max_divergence, future_g - max_divergence, current_g],
+            fill='toself',
+            fillcolor='rgba(99, 102, 241, 0.15)',
+            line=dict(color='rgba(255,255,255,0)'),
+            hoverinfo="skip",
+            name='Risk Surface'
+        ))
+        
+        # 3. Plot Midline Prediction (Dashed)
+        cone_fig.add_trace(go.Scatter(
+            x=[t0, t_end], y=[current_g, future_g],
+            mode='lines', name='Predicted Path',
+            line=dict(color='#6366F1', width=2, dash='dash')
+        ))
+        
+        # Chart Formatting (Target Ranges)
+        cone_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.3, layer="below")
+        cone_fig.add_hline(y=70, line_dash="dot", line_color="#ED8796", layer="below")
+        cone_fig.add_hline(y=180, line_dash="dot", line_color="#EED49F", layer="below")
+        
+        cone_fig.update_layout(
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
-            height=350, margin=dict(l=0, r=0, t=30, b=0),
+            height=300, margin=dict(l=0, r=0, t=10, b=0),
             xaxis=dict(showgrid=False, fixedrange=True),
-            yaxis=dict(title="TIR (%)", range=[0, 100], showgrid=False, fixedrange=True),
-            yaxis2=dict(title="Avg BG", range=[50, 250], overlaying="y", side="right", showgrid=True, gridcolor='rgba(128,128,128,0.2)', fixedrange=True),
+            yaxis=dict(title="mg/dL", range=[40, 260], showgrid=True, gridcolor='rgba(128,128,128,0.2)', fixedrange=True),
             showlegend=False
         )
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-elif st.session_state.active_view == "Schedule":
-    st.info(f"**Agentic Insight:** The Risk Engine is factoring in **{meeting_count} meetings** to adjust glycemic sensitivity.")
+        st.plotly_chart(cone_fig, use_container_width=True, config={'displayModeBar': False})
+        
+        st.info(f"**Agentic Insight:** Volatility divergence is currently **±{int(max_divergence)} mg/dL**, influenced by a Whoop Strain multiplier of **{w_strain}** and recent sleep recovery metrics.")
     
-    h1, h2, h3, h4 = st.columns(4)
-    with h1: st.markdown(render_adaptive_schedule_card("1 HOUR", '✈️ SHIFTING' if st.session_state.current_context == 'Travel' else '🟢 SAFE'), unsafe_allow_html=True)
-    with h2: st.markdown(render_adaptive_schedule_card("4 HOURS", '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'), unsafe_allow_html=True)
-    with h3: st.markdown(render_adaptive_schedule_card("24 HOURS", '🟢 GOOD'), unsafe_allow_html=True)
-    with h4: st.markdown(render_adaptive_schedule_card("MEETINGS", f"{meeting_count} ({'🔴 CRITICAL' if meeting_count>=7 else '🟡 ELEVATED' if meeting_count>=4 else '🟢 LIGHT'})"), unsafe_allow_html=True)
-
-elif st.session_state.active_view == "Sleep":
-    st.markdown("### 🌙 Sleep & Recovery Correlation")
-    if st.session_state.whoop_token and whoop_metrics:
-        sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 85)
-        overnight_df = full_data.tail(96)
-        std_dev = int(overnight_df['Glucose_Value'].std())
-        safe_std = int(std_val) if pd.notna(std_val) else 0
+    elif st.session_state.active_view == "Briefing":
+        with st.spinner("Compiling Executive Briefing..."):
+            try:
+                sys = f"""You are an elite personal performance coach and clinical AI agent. Tone should be {get_claude_tone()}
+                Metrics: {st.session_state.current_context} Context, {meeting_count} meetings today, Whoop Recovery: {w_rec}%, Current BG: {int(latest_bg['Glucose_Value'])} ({latest_bg['Trend']}). 
+                Active Memory Context: {context_memory_string}.
+                Clinical Guardrails: Target range is 70-180 mg/dL. Any spike above 180 is considered high and requires attention.
+                CRITICAL: If the Active Memory explains the current glucose trend, explicitly acknowledge this.
+                Synthesize this into a proactive daily briefing. Focus on cognitive load management and metabolic forecasting. Speak directly to me using 'you'.
+                Return ONLY a valid JSON object with these EXACT keys: 
+                'metabolic_baseline' (assess my physical readiness and insulin sensitivity based on Whoop, BG, and Memory), 
+                'schedule_friction' (how my calendar density impacts my glucose management today), 
+                'action_directive' (one clear, proactive step to take right now)."""
+                
+                data = ask_claude(sys, [{"role": "user", "content": "Generate my morning briefing."}])
+                st.info(f"**🧬 Metabolic Baseline:** {html.escape(data.get('metabolic_baseline', ''))}")
+                st.warning(f"**🗓️ Schedule Friction:** {html.escape(data.get('schedule_friction', ''))}")
+                st.success(f"**🎯 Action Directive:** {html.escape(data.get('action_directive', ''))}")
+            except Exception as e: st.error(f"Failed: {e}")
+    
+    elif st.session_state.active_view == "Metrics":
+        top_container = st.container()
+        chart_container = st.container()
         
-        s_col1, s_col2 = st.columns(2)
-        with s_col1: st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
-        with s_col2: st.metric("Overnight Volatility", f"±{std_dev} mg/dL", delta="Stable" if std_dev < 15 else "Erratic", delta_color="normal" if std_dev < 15 else "inverse")
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
+        tw = st.radio("Time Range", ["3h", "6h", "12h", "24h"], index=1, horizontal=True, label_visibility="collapsed", key="metrics_tw")
+        p_df = full_data.tail({"3h": 36, "6h": 72, "12h": 144, "24h": 288}[tw])
         
-        sleep_fig = go.Figure()
-        sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
-        sleep_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); sleep_fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
-        sleep_fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
-        st.plotly_chart(sleep_fig, use_container_width=True, config={'displayModeBar': False})
+        with top_container:
+            with st.spinner("Synthesizing Trend..."):
+                raw_std_val = p_df['Glucose_Value'].std()
+                safe_std = int(raw_std_val) if pd.notna(raw_std_val) else 0
+                metrics_str = f"Avg: {int(p_df['Glucose_Value'].mean())}, Min: {int(p_df['Glucose_Value'].min())}, Max: {int(p_df['Glucose_Value'].max())}, Std Dev: {safe_std}, Latest: {int(p_df['Glucose_Value'].iloc[-1])}"
+                st.success(f"**🤖 Agentic Synthesis:** {get_ai_chart_summary('Glucose', tw, metrics_str, context_memory_string)}")
+                
+            c_dex = st.columns(3)
+            c_dex[0].metric("Blood Sugar (mg/dL)", int(latest_bg['Glucose_Value']), int(latest_bg['Glucose_Value'] - full_data.iloc[-2]['Glucose_Value']))
+            c_dex[1].metric("Trend", latest_bg['Trend'])
+            
+            gmi_tw = calculate_gmi(p_df['Glucose_Value'].mean())
+            c_dex[2].metric("Est. GMI", f"{gmi_tw}%")
+            
+            if st.session_state.whoop_token and whoop_metrics:
+                st.markdown("<br>", unsafe_allow_html=True)
+                c_wh1, c_wh2, c_wh3 = st.columns(3)
+                c_wh1.metric("Recovery", f"{w_rec}%")
+                c_wh2.metric("HRV", f"{w_hrv} ms")
+                c_wh3.metric("Resting HR", f"{w_rhr} bpm")
+                st.markdown("<br>", unsafe_allow_html=True)
         
-        with st.spinner("Synthesizing Sleep Impact..."):
-            metrics_str = f"Avg: {int(overnight_df['Glucose_Value'].mean())}, Min: {int(overnight_df['Glucose_Value'].min())}, Max: {int(overnight_df['Glucose_Value'].max())}, Std Dev: {safe_std}"
-            st.success(f"**🤖 Agentic Insight:** {get_ai_chart_summary(f'Overnight Glucose (with {sleep_perf}% Sleep Performance)', '12h', metrics_str, context_memory_string)}")
-    else:
-        st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
+        with chart_container:
+            fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
+            fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    
+    elif st.session_state.active_view == "Trends":
+        top_container = st.container()
+        chart_container = st.container()
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        trend_window = st.radio("Select Horizon", ["1 Week", "1 Month", "3 Months"], horizontal=True, key="trends_tw")
+    
+        days = 7 if trend_window == "1 Week" else 30 if trend_window == "1 Month" else 90
+        dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+        mock_tir = np.clip(np.random.normal(75, 8, days), 0, 100) 
+        mock_avg_bg = np.clip(np.random.normal(135, 15, days), 70, 200)
+    
+        with top_container:
+            if st.button(f"🧠 Synthesize {trend_window} Patterns", type="primary", use_container_width=True):
+                with st.spinner("Analyzing historical telemetry, journal logs, and metabolic load..."):
+                    try:
+                        journal_text = " | ".join([f"{e['time']}: {e['desc']}" for e in st.session_state.event_log]) if st.session_state.event_log else "No recent manual logs."
+        
+                        sys_prompt = f"""You are my elite long-term performance endocrinologist.
+                        Analyze my {trend_window} metabolic trends based on my recent journals, current Whoop strain ({w_strain}), and average TIR of {int(mock_tir.mean())}%.
+                        Journal Context: {journal_text}
+                        Provide a 3-sentence deep insight identifying a hidden pattern (e.g., "Your TIR drops on days you log high stress and sleep poorly"). Speak directly to me ('you'). No markdown.
+                        """
+                        trend_insight = ask_claude(sys_prompt, [{"role": "user", "content": "Find my hidden metabolic patterns."}], max_tokens=200, parse_json=False)
+                        
+                        st.session_state.latest_trend_insight = trend_insight
+                        st.success(f"**Agentic Synthesis:** {trend_insight}")
+                    except Exception as e:
+                        st.error(f"Analysis failed: {e}")
+            elif st.session_state.latest_trend_insight != "No macro trend synthesized yet. Run an analysis in the Trends tab.":
+                st.success(f"**Latest Synthesis:** {st.session_state.latest_trend_insight}")
+    
+        with chart_container:
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=dates, y=mock_tir, name="Time in Range (%)", marker_color="#8B5CF6", opacity=0.7))
+            fig.add_trace(go.Scatter(x=dates, y=mock_avg_bg, name="Avg Glucose (mg/dL)", mode="lines+markers", line=dict(color="#ED8796", width=3), yaxis="y2"))
+        
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
+                height=350, margin=dict(l=0, r=0, t=30, b=0),
+                xaxis=dict(showgrid=False, fixedrange=True),
+                yaxis=dict(title="TIR (%)", range=[0, 100], showgrid=False, fixedrange=True),
+                yaxis2=dict(title="Avg BG", range=[50, 250], overlaying="y", side="right", showgrid=True, gridcolor='rgba(128,128,128,0.2)', fixedrange=True),
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    
+    elif st.session_state.active_view == "Schedule":
+        st.info(f"**Agentic Insight:** The Risk Engine is factoring in **{meeting_count} meetings** to adjust glycemic sensitivity.")
+        
+        h1, h2, h3, h4 = st.columns(4)
+        with h1: st.markdown(render_adaptive_schedule_card("1 HOUR", '✈️ SHIFTING' if st.session_state.current_context == 'Travel' else '🟢 SAFE'), unsafe_allow_html=True)
+        with h2: st.markdown(render_adaptive_schedule_card("4 HOURS", '🟡 CAUTION' if st.session_state.current_context == 'Stressed' else '🟢 CLEAR'), unsafe_allow_html=True)
+        with h3: st.markdown(render_adaptive_schedule_card("24 HOURS", '🟢 GOOD'), unsafe_allow_html=True)
+        with h4: st.markdown(render_adaptive_schedule_card("MEETINGS", f"{meeting_count} ({'🔴 CRITICAL' if meeting_count>=7 else '🟡 ELEVATED' if meeting_count>=4 else '🟢 LIGHT'})"), unsafe_allow_html=True)
+    
+    elif st.session_state.active_view == "Sleep":
+        st.markdown("### 🌙 Sleep & Recovery Correlation")
+        if st.session_state.whoop_token and whoop_metrics:
+            sleep_perf = whoop_metrics.get('score', {}).get('sleep_performance_percentage', 85)
+            overnight_df = full_data.tail(96)
+            
+            raw_std = overnight_df['Glucose_Value'].std()
+            safe_std = int(raw_std) if pd.notna(raw_std) else 0
+            
+            s_col1, s_col2 = st.columns(2)
+            with s_col1: st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
+            with s_col2: st.metric("Overnight Volatility", f"±{safe_std} mg/dL", delta="Stable" if safe_std < 15 else "Erratic", delta_color="normal" if safe_std < 15 else "inverse")
+            st.markdown("---")
+            
+            sleep_fig = go.Figure()
+            sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
+            sleep_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); sleep_fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
+            sleep_fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+            st.plotly_chart(sleep_fig, use_container_width=True, config={'displayModeBar': False})
+            
+            with st.spinner("Synthesizing Sleep Impact..."):
+                metrics_str = f"Avg: {int(overnight_df['Glucose_Value'].mean())}, Min: {int(overnight_df['Glucose_Value'].min())}, Max: {int(overnight_df['Glucose_Value'].max())}, Std Dev: {safe_std}"
+                st.success(f"**🤖 Agentic Insight:** {get_ai_chart_summary(f'Overnight Glucose (with {sleep_perf}% Sleep Performance)', '12h', metrics_str, context_memory_string)}")
+        else:
+            st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
 
 st.markdown(styles.FOOTER_HTML, unsafe_allow_html=True)
