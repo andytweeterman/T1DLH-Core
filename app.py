@@ -671,7 +671,7 @@ if st.session_state.show_dossier:
                 sys_prompt = f"""You are an elite endocrinologist generating a clinical dossier for a patient's medical file.
                 Metrics: GMI {d_gmi}%, TIR {d_tir}%, Sleep Performance {w_sleep}%, Strain {w_strain}.
                 Analyze this data from an Enterprise Risk Management perspective. Output a 3-paragraph clinical summary highlighting systemic correlations (e.g., how their sleep and strain impact their glycemic volatility) and suggest 2 behavioral interventions. Speak in the third person ('The patient'). Do not prescribe insulin."""
-                dossier_text = ask_claude(sys_prompt, [{"role": "user", "content": "Generate the clinical dossier."}], max_tokens=500, parse_json=False)
+                dossier_text = ask_claude(sys_prompt, [{"role": "user", "content": "Generate the clinical dossier."}], max_tokens=1500, parse_json=False)
                 st.info(dossier_text)
             except Exception as e:
                 st.error(f"Failed to generate synthesis: {e}")
@@ -818,6 +818,7 @@ else:
                 st.markdown("<br>", unsafe_allow_html=True)
         
         with chart_container:
+            st.markdown("##### 🩸 Current Blood Sugar")
             fig = go.Figure(go.Scatter(x=p_df['Timestamp'], y=p_df['Glucose_Value'], mode='lines', line=dict(color='#8B5CF6', width=3)))
             fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'), height=400, margin=dict(l=0, r=0, t=30, b=0), yaxis_title="mg/dL", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
@@ -846,7 +847,7 @@ else:
                         Journal Context: {journal_text}
                         Provide a 3-sentence deep insight identifying a hidden pattern (e.g., "Your TIR drops on days you log high stress and sleep poorly"). Speak directly to me ('you'). No markdown.
                         """
-                        trend_insight = ask_claude(sys_prompt, [{"role": "user", "content": "Find my hidden metabolic patterns."}], max_tokens=200, parse_json=False)
+                        trend_insight = ask_claude(sys_prompt, [{"role": "user", "content": "Find my hidden metabolic patterns."}], max_tokens=500, parse_json=False)
                         
                         st.session_state.latest_trend_insight = trend_insight
                         st.success(f"**Agentic Synthesis:** {trend_insight}")
@@ -887,21 +888,23 @@ else:
             
             raw_std = overnight_df['Glucose_Value'].std()
             safe_std = int(raw_std) if pd.notna(raw_std) else 0
+
+            with st.spinner("Synthesizing Sleep Impact..."):
+                metrics_str = f"Avg: {int(overnight_df['Glucose_Value'].mean())}, Min: {int(overnight_df['Glucose_Value'].min())}, Max: {int(overnight_df['Glucose_Value'].max())}, Std Dev: {safe_std}"
+                st.success(f"**🤖 Agentic Insight:** {get_ai_chart_summary(f'Overnight Glucose (with {sleep_perf}% Sleep Performance)', '12h', metrics_str, context_memory_string)}")
             
             s_col1, s_col2 = st.columns(2)
             with s_col1: st.metric("Sleep Performance", f"{sleep_perf}%", delta="Restorative" if sleep_perf > 80 else "Deficit", delta_color="normal" if sleep_perf > 80 else "inverse")
             with s_col2: st.metric("Overnight Volatility", f"±{safe_std} mg/dL", delta="Stable" if safe_std < 15 else "Erratic", delta_color="normal" if safe_std < 15 else "inverse")
             st.markdown("---")
             
+            st.markdown("##### 🌙 Overnight Blood Sugar")
             sleep_fig = go.Figure()
             sleep_fig.add_trace(go.Scatter(x=overnight_df['Timestamp'], y=overnight_df['Glucose_Value'], mode='lines+markers', line=dict(color='#A855F7', width=4)))
             sleep_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.5); sleep_fig.add_hline(y=70, line_dash="dash", line_color="#ED8796")
             sleep_fig.update_layout(height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
             st.plotly_chart(sleep_fig, use_container_width=True, config={'displayModeBar': False})
             
-            with st.spinner("Synthesizing Sleep Impact..."):
-                metrics_str = f"Avg: {int(overnight_df['Glucose_Value'].mean())}, Min: {int(overnight_df['Glucose_Value'].min())}, Max: {int(overnight_df['Glucose_Value'].max())}, Std Dev: {safe_std}"
-                st.success(f"**🤖 Agentic Insight:** {get_ai_chart_summary(f'Overnight Glucose (with {sleep_perf}% Sleep Performance)', '12h', metrics_str, context_memory_string)}")
         else:
             st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
 
