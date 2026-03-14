@@ -34,7 +34,7 @@ ALL ACTION DIRECTIVES MUST BE STRICTLY BEHAVIORAL (E.G., WALKING, RESTING) OR NU
 # -----------------------------------------------------------------------------
 # 1. SETUP & PAGE CONFIG
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="TLDH Alpha", page_icon="🔒", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TLDH Alpha 2.0", page_icon="🔒", layout="wide", initial_sidebar_state="collapsed")
 styles.apply_theme()
 styles.inject_custom_css()
 
@@ -61,7 +61,7 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state.authenticated:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; color: #8B5CF6; font-size: 3rem;'>🔒 TLDH Private Alpha</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #8B5CF6; font-size: 3rem;'>🔒 TLDH Private Alpha 2.0</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 30px;'>Agentic Engine IP is currently locked. Authorized access only.</p>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns([1, 1.5, 1])
@@ -109,7 +109,14 @@ def ask_claude(system_instruction, user_messages, max_tokens=500, parse_json=Tru
     try:
         res = client.messages.create(model=ACTIVE_MODEL, max_tokens=max_tokens, system=safe_sys, messages=user_messages)
         text = res.content[0].text.strip()
-        return json.loads(text.replace("```json", "").replace("```", "").strip()) if parse_json else text
+        if parse_json:
+            text = text.replace("```json", "").replace("```", "").strip()
+            # Robust RegEx to extract only the JSON object, ignoring conversational padding
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                text = match.group(0)
+            return json.loads(text)
+        return text
     except Exception as e:
         if "not_found_error" in str(e) or "404" in str(e):
             raise Exception(f"**API Account Locked:** Check Anthropic billing.")
@@ -408,7 +415,7 @@ with st.container(border=True):
                 st.divider()
                 with st.form("usda_search_form"):
                     db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa")
-                    db_search_submit = st.form_submit_button("Lookup Exact Macros", use_container_width=True)
+                    db_search_submit = st.form_submit_button("Look up Food Macros", use_container_width=True)
                 
     with hc4:
         st.markdown("<div class='desktop-spacer' style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -493,6 +500,32 @@ st.divider()
 # -----------------------------------------------------------------------------
 # 6. EVENT PROCESSORS (SEMANTIC NLP DETECT)
 # -----------------------------------------------------------------------------
+
+# --- BUG FIX: Wire up the USDA Text Search button ---
+if 'db_search_submit' in locals() and db_search_submit and db_search_query:
+    with st.spinner(f"Querying USDA Macro Database for '{db_search_query}'..."):
+        try:
+            sys = f"""You are my elite personal clinical nutritionist managing my Type 1 Diabetes.
+            Look up the exact macronutrients for the following food query: {db_search_query}.
+            Speak directly to me using "you" and "your". Tone should be {get_claude_tone()}.
+            Return ONLY a valid JSON object with EXACTLY these keys and strict data types:
+            - "food_identified": "Short description." (Must be a String)
+            - "estimated_carbs_g": 45 (MUST be a single Integer. No dictionaries)
+            - "glycemic_index": "High", "Medium", or "Low" (Must be a String)
+            - "analysis": "A concise 2-sentence clinical breakdown." (Must be a String)"""
+            
+            meal_data = ask_claude(sys, [{"role": "user", "content": "Retrieve exact macros for this query."}])
+            meal_data["source"] = "🔍 USDA Text Search"
+            
+            raw_c = meal_data.get('estimated_carbs_g', 0)
+            display_c = raw_c.get('total_estimated', raw_c.get('total', 0)) if isinstance(raw_c, dict) else raw_c
+            log_event("🍽️ Meal", f"{meal_data.get('food_identified', 'Food')} ({display_c}g Carbs)")
+            
+            st.session_state.latest_meal_analysis = meal_data
+            st.rerun() 
+        except Exception as e: st.error(f"Search Failed: {e}")
+
+# --- Process Audio/Text Journals ---
 if 'text_submit' in locals() and text_submit and text_input:
     with st.spinner("Correlating subjective report with objective telemetry..."):
         try:
@@ -517,6 +550,7 @@ if 'text_submit' in locals() and text_submit and text_input:
             st.rerun() 
         except Exception as e: st.error(f"Failed: {e}")
 
+# --- Process Food Camera Image ---
 if 'food_image' in locals() and food_image is not None:
     img_hash = hashlib.md5(food_image.getvalue()).hexdigest()
     if img_hash != st.session_state.get("last_img_hash"):
@@ -542,7 +576,7 @@ if 'food_image' in locals() and food_image is not None:
                 st.session_state.latest_meal_analysis = meal_data
                 st.session_state.camera_active = False 
                 st.rerun() 
-            except Exception as e: st.error(f"Failed: {e}")
+            except Exception as e: st.error(f"Vision Analysis Failed: {e}")
 
 # Render Semantic Suggestions (Assistant Output)
 if st.session_state.get("journal_history"):
@@ -623,6 +657,68 @@ if st.session_state.active_view == "Home":
         last_event = st.session_state.event_log[-1]
         last_event_str = f"{last_event['type']}: {last_event['desc']}"
     c3.metric("📝 Latest Activity", last_event_str)
+
+    # --- PREDICTIVE CONE OF UNCERTAINTY ---
+    st.markdown("---")
+    st.markdown("### 📈 Predictive Volatility Horizon")
+    st.caption("Fusing primary biometric momentum with systemic strain to visualize the future T+3 hour risk surface.")
+    
+    # Calculate Cone Boundaries
+    strain_multiplier = (w_strain / 21.0) * 30
+    sleep_multiplier = 20 if w_sleep < 70 else (10 if w_sleep < 85 else 0)
+    max_divergence = 15 + strain_multiplier + sleep_multiplier
+    
+    current_g = latest_bg['Glucose_Value']
+    t0 = latest_bg['Timestamp']
+    t_end = t0 + timedelta(hours=3)
+    
+    # Determine baseline trajectory
+    trend_val = 15 if "Rising" in latest_bg['Trend'] else (-15 if "Falling" in latest_bg['Trend'] else 5)
+    future_g = current_g + trend_val
+    
+    cone_fig = go.Figure()
+    
+    # 1. Plot Historical Data (Past 2 hours)
+    past_df = full_data.tail(24) # 2 hours of 5-min intervals
+    cone_fig.add_trace(go.Scatter(
+        x=past_df['Timestamp'], y=past_df['Glucose_Value'], 
+        mode='lines', name='Historical', 
+        line=dict(color='#10B981', width=3)
+    ))
+    
+    # 2. Plot the Cone Area (Risk Surface)
+    cone_fig.add_trace(go.Scatter(
+        x=[t0, t_end, t_end, t0],
+        y=[current_g, future_g + max_divergence, future_g - max_divergence, current_g],
+        fill='toself',
+        fillcolor='rgba(99, 102, 241, 0.15)',
+        line=dict(color='rgba(255,255,255,0)'),
+        hoverinfo="skip",
+        name='Risk Surface'
+    ))
+    
+    # 3. Plot Midline Prediction (Dashed)
+    cone_fig.add_trace(go.Scatter(
+        x=[t0, t_end], y=[current_g, future_g],
+        mode='lines', name='Predicted Path',
+        line=dict(color='#6366F1', width=2, dash='dash')
+    ))
+    
+    # Chart Formatting (Target Ranges)
+    cone_fig.add_hrect(y0=70, y1=180, line_width=0, fillcolor="rgba(166, 218, 149, 0.1)", opacity=0.3, layer="below")
+    cone_fig.add_hline(y=70, line_dash="dot", line_color="#ED8796", layer="below")
+    cone_fig.add_hline(y=180, line_dash="dot", line_color="#EED49F", layer="below")
+    
+    cone_fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='gray'),
+        height=300, margin=dict(l=0, r=0, t=10, b=0),
+        xaxis=dict(showgrid=False, fixedrange=True),
+        yaxis=dict(title="mg/dL", range=[40, 260], showgrid=True, gridcolor='rgba(128,128,128,0.2)', fixedrange=True),
+        showlegend=False
+    )
+    st.plotly_chart(cone_fig, use_container_width=True, config={'displayModeBar': False})
+    
+    st.info(f"**Agentic Insight:** Volatility divergence is currently **±{int(max_divergence)} mg/dL**, influenced by a Whoop Strain multiplier of **{w_strain}** and recent sleep recovery metrics.")
 
 elif st.session_state.active_view == "Briefing":
     with st.spinner("Compiling Executive Briefing..."):
@@ -754,7 +850,6 @@ elif st.session_state.active_view == "Sleep":
         
         with st.spinner("Synthesizing Sleep Impact..."):
             metrics_str = f"Avg: {int(overnight_df['Glucose_Value'].mean())}, Min: {int(overnight_df['Glucose_Value'].min())}, Max: {int(overnight_df['Glucose_Value'].max())}, Std Dev: {safe_std}"
-            # Safe call hitting the Clinical Guardrail wrapper
             st.success(f"**🤖 Agentic Insight:** {get_ai_chart_summary(f'Overnight Glucose (with {sleep_perf}% Sleep Performance)', '12h', metrics_str, context_memory_string)}")
     else:
         st.info("🔗 Open the ☰ MENU above to connect Whoop and enable Sleep Impact correlation.")
