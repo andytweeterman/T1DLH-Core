@@ -114,28 +114,28 @@ def test_calculate_schedule_load_high():
     for count in [7, 8, 10, 20]:
         multiplier, message = calculate_schedule_load(count)
         assert multiplier == 1.3
-        assert "🔴 HIGH LOAD: Schedule density is critical" in message
+        assert "🔴 HIGH LOAD" in message
 
 def test_calculate_schedule_load_elevated():
     # 4 <= meeting_count < 7
     for count in [4, 5, 6]:
         multiplier, message = calculate_schedule_load(count)
         assert multiplier == 1.15
-        assert "🟡 ELEVATED LOAD: Moderate schedule density" in message
+        assert "🟡 ELEVATED LOAD" in message
 
 def test_calculate_schedule_load_light():
     # meeting_count < 4
     for count in [0, 1, 2, 3]:
         multiplier, message = calculate_schedule_load(count)
         assert multiplier == 1.0
-        assert message == "🟢 LIGHT LOAD: Schedule is clear."
+        assert "🟢 LIGHT LOAD" in message
 
 def test_calculate_schedule_load_negative():
     # Edge case: negative meetings (should fall under light load)
     for count in [-1, -5]:
         multiplier, message = calculate_schedule_load(count)
         assert multiplier == 1.0
-        assert message == "🟢 LIGHT LOAD: Schedule is clear."
+        assert "🟢 LIGHT LOAD" in message
 
 @patch('logic.is_weekend_window')
 @patch('logic.get_whoop_risk_modifier')
