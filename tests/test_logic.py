@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from logic import (
     calculate_schedule_load, 
     get_whoop_risk_modifier, 
+    is_weekend_window,
     calc_glycemic_risk,
     fetch_health_data
 )
@@ -206,3 +207,42 @@ def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mo
     # Alert should not be triggered because weekend is active
     assert status != "🟡 LOAD ALERT"
     assert "🌴 WEEKEND MODE ACTIVE" in message
+
+# =====================================================================
+# is_weekend_window TESTS
+# =====================================================================
+
+@patch('logic.datetime')
+def test_is_weekend_window_friday_evening(mock_dt):
+    mock_dt.now.return_value = datetime(2023, 1, 6, 17, 0) # Friday 5pm
+    assert is_weekend_window() == True
+
+@patch('logic.datetime')
+def test_is_weekend_window_friday_morning(mock_dt):
+    mock_dt.now.return_value = datetime(2023, 1, 6, 16, 59) # Friday 4:59pm
+    assert is_weekend_window() == False
+
+@patch('logic.datetime')
+def test_is_weekend_window_saturday(mock_dt):
+    mock_dt.now.return_value = datetime(2023, 1, 7, 12, 0) # Saturday
+    assert is_weekend_window() == True
+
+@patch('logic.datetime')
+def test_is_weekend_window_sunday(mock_dt):
+    mock_dt.now.return_value = datetime(2023, 1, 8, 12, 0) # Sunday
+    assert is_weekend_window() == True
+
+@patch('logic.datetime')
+def test_is_weekend_window_monday_early(mock_dt):
+    mock_dt.now.return_value = datetime(2023, 1, 9, 7, 59) # Monday 7:59am
+    assert is_weekend_window() == True
+
+@patch('logic.datetime')
+def test_is_weekend_window_monday_late(mock_dt):
+    mock_dt.now.return_value = datetime(2023, 1, 9, 8, 0) # Monday 8am
+    assert is_weekend_window() == False
+
+@patch('logic.datetime')
+def test_is_weekend_window_wednesday(mock_dt):
+    mock_dt.now.return_value = datetime(2023, 1, 11, 12, 0) # Wednesday
+    assert is_weekend_window() == False
