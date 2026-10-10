@@ -1,7 +1,28 @@
 import pandas as pd
 import numpy as np
 import requests
+import urllib.parse
+import socket
+import ipaddress
 from datetime import datetime, timedelta
+
+def _is_safe_url(url):
+    try:
+        parsed = urllib.parse.urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        for res in socket.getaddrinfo(hostname, None):
+            ip = res[4][0]
+            ip_obj = ipaddress.ip_address(ip)
+            if (ip_obj.is_private or ip_obj.is_loopback or
+                ip_obj.is_link_local or ip_obj.is_multicast or
+                ip_obj.is_unspecified or ip_obj.is_reserved):
+                return False
+        return True
+    except Exception as e:
+        return False
 
 # -----------------------------------------------------------------------------
 # 1. LIVE DATA INTEGRATION (NIGHTSCOUT)
@@ -13,13 +34,21 @@ def fetch_nightscout_data(url, token, count=288):
         base_url = 'https://' + base_url
         
     endpoint = f"{base_url}/api/v1/entries.json?count={count}"
+
+    if not _is_safe_url(endpoint):
+        raise ValueError("Invalid or restricted URL")
     if token:
         endpoint += f"&token={token}"
         
     try:
         # Increased timeout to 30s to allow sleeping Nightscout servers time to wake up
-        response = requests.get(endpoint, timeout=30)
+        response = requests.get(endpoint, timeout=30, allow_redirects=False)
         response.raise_for_status()
+
+        # If the server tries to redirect us, treat it as an error to prevent SSRF bypass
+        if response.is_redirect or response.is_permanent_redirect or response.status_code in (301, 302, 303, 307, 308):
+            raise ValueError("Redirects are not allowed for security reasons.")
+
         data = response.json()
         
         if not data: return None
