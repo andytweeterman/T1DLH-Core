@@ -13,7 +13,8 @@ from logic import (
     calculate_schedule_load, 
     get_whoop_risk_modifier, 
     calc_glycemic_risk,
-    fetch_health_data
+    fetch_health_data,
+    generate_travel_advisory
 )
 
 # =====================================================================
@@ -206,3 +207,38 @@ def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mo
     # Alert should not be triggered because weekend is active
     assert status != "🟡 LOAD ALERT"
     assert "🌴 WEEKEND MODE ACTIVE" in message
+
+# =====================================================================
+# TRAVEL ADVISORY TESTS
+# =====================================================================
+
+def test_generate_travel_advisory_default():
+    """Verify default behavior of generating travel advisory (+6 hours)."""
+    advisory = generate_travel_advisory()
+    assert "Shift +2h" in advisory
+    assert "Final +2h" in advisory
+
+def test_generate_travel_advisory_positive_shift():
+    """Verify behavior with a custom positive shift."""
+    advisory = generate_travel_advisory(offset_hours=9)
+    assert "Shift +3h" in advisory
+    assert "Final +3h" in advisory
+
+def test_generate_travel_advisory_zero_shift():
+    """Verify behavior with zero shift."""
+    advisory = generate_travel_advisory(offset_hours=0)
+    assert "Shift +0h" in advisory
+    assert "Final +0h" in advisory
+
+def test_generate_travel_advisory_negative_shift():
+    """Verify behavior with a negative shift."""
+    advisory = generate_travel_advisory(offset_hours=-6)
+    assert "Shift +-2h" in advisory
+    assert "Final +-2h" in advisory
+
+def test_generate_travel_advisory_fractional_shift():
+    """Verify behavior with fractional offset hours that truncate nicely."""
+    advisory = generate_travel_advisory(offset_hours=7)
+    # 7 / 3 = 2.333 -> int(2.333) = 2
+    assert "Shift +2h" in advisory
+    assert "Final +2h" in advisory
