@@ -421,7 +421,7 @@ with st.container(border=True):
                         st.session_state.camera_active = False; st.rerun()
                         
                 st.divider()
-                with st.form("usda_search_form"):
+                with st.form("usda_search_form", clear_on_submit=True):
                     db_search_query = st.text_input("Search USDA Database:", placeholder="E.g., 1 cup cooked quinoa")
                     db_search_submit = st.form_submit_button("Look up Food Macros", use_container_width=True)
                 
@@ -516,7 +516,7 @@ st.divider()
 # 6. EVENT PROCESSORS (SEMANTIC NLP DETECT)
 # -----------------------------------------------------------------------------
 
-# --- BUG FIX: Wire up the USDA Text Search button ---
+# --- Process USDA Text Search ---
 if 'db_search_submit' in locals() and db_search_submit and db_search_query:
     with st.spinner(f"Querying USDA Macro Database for '{db_search_query}'..."):
         try:
