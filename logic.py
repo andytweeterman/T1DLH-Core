@@ -70,7 +70,9 @@ def apply_context_modifiers(df, context):
     elif context == "Project": df['Glucose_Value'] += np.linspace(0, -40, len(df)) + noise
     elif context == "Travel":
         spikes = np.zeros(len(df))
-        for idx in np.random.choice(range(len(df)), size=3, replace=False): spikes += 60 * np.exp(-0.5 * ((np.arange(len(df)) - idx) / 6)**2) 
+        x_vals = np.arange(len(df))
+        for idx in np.random.choice(range(len(df)), size=3, replace=False):
+            spikes += 60 * np.exp(-0.5 * ((x_vals - idx) / 6)**2)
         df['Glucose_Value'] += spikes + noise
     else: df['Glucose_Value'] += noise
 
