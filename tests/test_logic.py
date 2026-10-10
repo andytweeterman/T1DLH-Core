@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch
+from freezegun import freeze_time
 import pandas as pd
 import numpy as np
 import sys
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from logic import (
+    is_weekend_window,
     calculate_schedule_load, 
     get_whoop_risk_modifier, 
     calc_glycemic_risk,
@@ -206,3 +208,18 @@ def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mo
     # Alert should not be triggered because weekend is active
     assert status != "🟡 LOAD ALERT"
     assert "🌴 WEEKEND MODE ACTIVE" in message
+
+
+# --- TEST IS_WEEKEND_WINDOW ---
+@pytest.mark.parametrize("mock_time, expected", [
+    ("2023-10-13 16:59:59", False),  # Friday 4:59 PM
+    ("2023-10-13 17:00:00", True),   # Friday 5:00 PM
+    ("2023-10-14 12:00:00", True),   # Saturday Noon
+    ("2023-10-15 12:00:00", True),   # Sunday Noon
+    ("2023-10-16 07:59:59", True),   # Monday 7:59 AM
+    ("2023-10-16 08:00:00", False),  # Monday 8:00 AM
+    ("2023-10-18 12:00:00", False),  # Wednesday Noon
+])
+def test_is_weekend_window(mock_time, expected):
+    with freeze_time(mock_time):
+        assert is_weekend_window() == expected
