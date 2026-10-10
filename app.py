@@ -840,7 +840,7 @@ else:
             if st.button(f"🧠 Synthesize {trend_window} Patterns", type="primary", use_container_width=True):
                 with st.spinner("Analyzing historical telemetry, journal logs, and metabolic load..."):
                     try:
-                        journal_text = " | ".join([f"{e['time']}: {e['desc']}" for e in st.session_state.event_log]) if st.session_state.event_log else "No recent manual logs."
+                        journal_text = " | ".join(f"{e['time']}: {e['desc']}" for e in st.session_state.event_log) if st.session_state.event_log else "No recent manual logs."
         
                         sys_prompt = f"""You are my elite long-term performance endocrinologist.
                         Analyze my {trend_window} metabolic trends based on my recent journals, current Whoop strain ({w_strain}), and average TIR of {int(mock_tir.mean())}%.
