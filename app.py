@@ -9,7 +9,6 @@ import json
 import whoop
 import hashlib
 import base64
-import requests
 import re
 import pandas as pd
 import numpy as np
