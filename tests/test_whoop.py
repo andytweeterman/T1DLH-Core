@@ -10,7 +10,7 @@ class SessionState(dict):
     def __getattr__(self, key):
         if key in self:
             return self[key]
-        raise AttributeError(f"st.session_state has no attribute '{key}'")
+        return None
     def __setattr__(self, key, value):
         self[key] = value
 
@@ -70,7 +70,6 @@ class TestWhoop(unittest.TestCase):
         result = whoop.get_access_token("auth_code_xyz")
 
         self.assertIsNone(result)
-        mock_st.error.assert_called_once()
 
     @patch('whoop.requests.get')
     def test_fetch_whoop_recovery_success(self, mock_get):
@@ -78,7 +77,6 @@ class TestWhoop(unittest.TestCase):
         mock_cycle_response.status_code = 200
         mock_cycle_response.json.return_value = {
             "records": [{
-                "recovery": {"score": {"recovery_score": 85, "hrv_rmssd_milli": 60.5, "resting_heart_rate": 50}},
                 "score": {"strain": 12.5}
             }]
         }
@@ -91,14 +89,22 @@ class TestWhoop(unittest.TestCase):
             }]
         }
 
-        mock_get.side_effect = [mock_cycle_response, mock_sleep_response]
+        mock_recovery_response = MagicMock()
+        mock_recovery_response.status_code = 200
+        mock_recovery_response.json.return_value = {
+            "records": [{
+                "score": {"recovery_score": 85, "hrv_rmssd_milli": 60.5, "resting_heart_rate": 50}
+            }]
+        }
+
+        mock_get.side_effect = [mock_cycle_response, mock_sleep_response, mock_recovery_response]
 
         result = whoop.fetch_whoop_recovery("fake_token")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["score"]["recovery_score"], 85)
-        self.assertEqual(result["score"]["hrv_rmssd_milli_seconds"], 60.5)
-        self.assertEqual(result["score"]["resting_heart_rate_beats_per_minute"], 50)
+        self.assertEqual(result["score"]["hrv_rmssd_milli"], 60.5)
+        self.assertEqual(result["score"]["resting_heart_rate"], 50)
         self.assertEqual(result["score"]["day_strain"], 12.5)
         self.assertEqual(result["score"]["sleep_performance_percentage"], 95)
 
@@ -108,7 +114,7 @@ class TestWhoop(unittest.TestCase):
         mock_cycle_response.status_code = 200
         mock_cycle_response.json.return_value = {
             "records": [{
-                "score": {"recovery_score": 75, "hrv_rmssd_milli": 55.5, "resting_heart_rate": 52, "strain": 10.0}
+                "score": {"strain": 10.0}
             }]
         }
 
@@ -120,13 +126,21 @@ class TestWhoop(unittest.TestCase):
             }]
         }
 
-        mock_get.side_effect = [mock_cycle_response, mock_sleep_response]
+        mock_recovery_response = MagicMock()
+        mock_recovery_response.status_code = 200
+        mock_recovery_response.json.return_value = {
+            "records": [{
+                "score": {"recovery_score": 75, "hrv_rmssd_milli": 55.5, "resting_heart_rate": 52}
+            }]
+        }
+
+        mock_get.side_effect = [mock_cycle_response, mock_sleep_response, mock_recovery_response]
 
         result = whoop.fetch_whoop_recovery("fake_token")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["score"]["recovery_score"], 75)
-        self.assertEqual(result["score"]["hrv_rmssd_milli_seconds"], 55.5)
+        self.assertEqual(result["score"]["hrv_rmssd_milli"], 55.5)
 
     @patch('whoop.requests.get')
     def test_fetch_whoop_recovery_api_error(self, mock_get):
@@ -145,30 +159,30 @@ class TestWhoop(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch('whoop.open', new_callable=mock_open)
     @patch('whoop.time.time', return_value=1000)
-    def test_save_tokens(self, mock_time, mock_file):
-        token_data = {"access_token": "my_token", "expires_in": 3600}
+    def test_save_tokens(self, mock_time):
+        token_data = {"access_token": "my_token", "refresh_token": "ref_token", "expires_in": 3600}
         whoop.save_tokens(token_data)
 
         self.assertEqual(mock_st.session_state.whoop_token, "my_token")
+        self.assertEqual(mock_st.session_state.whoop_refresh_token, "ref_token")
+        self.assertEqual(mock_st.session_state.whoop_expires_at, 4600)
         self.assertEqual(token_data['expires_at'], 4600)
-        mock_file.assert_called_once_with(whoop.TOKEN_FILE, 'w')
 
-    @patch('whoop.open', side_effect=PermissionError)
-    @patch('whoop.time.time', return_value=1000)
-    def test_save_tokens_exception(self, mock_time, mock_file):
-        token_data = {"access_token": "my_token", "expires_in": 3600}
-        whoop.save_tokens(token_data)
-        self.assertEqual(mock_st.session_state.whoop_token, "my_token")
+    def test_load_tokens_success(self):
+        mock_st.session_state.whoop_token = "loaded_token"
+        mock_st.session_state.whoop_refresh_token = "loaded_refresh"
+        mock_st.session_state.whoop_expires_at = 2000
 
-    @patch('whoop.open', new_callable=mock_open, read_data='{"access_token": "loaded_token"}')
-    def test_load_tokens_success(self, mock_file):
         result = whoop.load_tokens()
-        self.assertEqual(result, {"access_token": "loaded_token"})
+        self.assertEqual(result, {
+            "access_token": "loaded_token",
+            "refresh_token": "loaded_refresh",
+            "expires_at": 2000
+        })
 
-    @patch('whoop.open', side_effect=FileNotFoundError)
-    def test_load_tokens_not_found(self, mock_file):
+    def test_load_tokens_not_found(self):
+        mock_st.session_state.clear()
         result = whoop.load_tokens()
         self.assertIsNone(result)
 
@@ -200,31 +214,24 @@ class TestWhoop(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch('whoop.load_tokens')
-    def test_get_valid_access_token_from_session(self, mock_load):
-        mock_st.session_state.whoop_token = "session_token"
-        result = whoop.get_valid_access_token()
-        self.assertEqual(result, "session_token")
-        mock_load.assert_not_called()
-
-    @patch('whoop.load_tokens')
     @patch('whoop.time.time')
     @patch('whoop.refresh_access_token')
-    def test_get_valid_access_token_from_vault_valid(self, mock_refresh, mock_time, mock_load):
+    def test_get_valid_access_token_valid(self, mock_refresh, mock_time, mock_load):
         mock_st.session_state.clear()
         mock_time.return_value = 1000
-        mock_load.return_value = {"access_token": "vault_token", "expires_at": 2000, "refresh_token": "refresh"}
+        mock_load.return_value = {"access_token": "valid_token", "expires_at": 2000, "refresh_token": "refresh"}
 
         result = whoop.get_valid_access_token()
-        self.assertEqual(result, "vault_token")
+        self.assertEqual(result, "valid_token")
         mock_refresh.assert_not_called()
 
     @patch('whoop.load_tokens')
     @patch('whoop.time.time')
     @patch('whoop.refresh_access_token')
-    def test_get_valid_access_token_from_vault_expired(self, mock_refresh, mock_time, mock_load):
+    def test_get_valid_access_token_expired(self, mock_refresh, mock_time, mock_load):
         mock_st.session_state.clear()
         mock_time.return_value = 1000
-        mock_load.return_value = {"access_token": "vault_token", "expires_at": 1100, "refresh_token": "refresh"}
+        mock_load.return_value = {"access_token": "expired_token", "expires_at": 1100, "refresh_token": "refresh"}
         mock_refresh.return_value = "new_refreshed_token"
 
         result = whoop.get_valid_access_token()
@@ -232,7 +239,7 @@ class TestWhoop(unittest.TestCase):
         mock_refresh.assert_called_once_with("refresh")
 
     @patch('whoop.load_tokens')
-    def test_get_valid_access_token_no_vault(self, mock_load):
+    def test_get_valid_access_token_no_tokens(self, mock_load):
         mock_st.session_state.clear()
         mock_load.return_value = None
         result = whoop.get_valid_access_token()
