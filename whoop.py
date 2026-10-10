@@ -10,8 +10,6 @@ from urllib.parse import urlencode
 # Configure logging for this module
 logger = logging.getLogger(__name__)
 
-TOKEN_FILE = "whoop_tokens.json"
-
 # Load credentials from Streamlit secrets
 CLIENT_ID = st.secrets["WHOOP_CLIENT_ID"]
 CLIENT_SECRET = st.secrets["WHOOP_CLIENT_SECRET"]
@@ -92,25 +90,21 @@ def fetch_whoop_recovery(token):
         return None
 
 def save_tokens(token_data):
-    """Calculates expiration time and saves tokens to session state and local vault."""
+    """Calculates expiration time and saves tokens to session state securely."""
     token_data['expires_at'] = time.time() + token_data.get('expires_in', 3600)
     st.session_state.whoop_token = token_data.get("access_token")
-    
-    try:
-        with open(TOKEN_FILE, 'w') as f:
-            json.dump(token_data, f)
-    except Exception as e:
-        logger.error(f"Failed to save tokens locally: {e}")
+    st.session_state.whoop_refresh_token = token_data.get("refresh_token")
+    st.session_state.whoop_expires_at = token_data['expires_at']
 
 def load_tokens():
-    """Retrieves tokens from the local JSON vault."""
-    try:
-        with open(TOKEN_FILE, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
-    except json.JSONDecodeError:
-        return None
+    """Retrieves tokens from session state."""
+    if "whoop_token" in st.session_state and st.session_state.whoop_token:
+        return {
+            "access_token": st.session_state.whoop_token,
+            "refresh_token": st.session_state.get("whoop_refresh_token"),
+            "expires_at": st.session_state.get("whoop_expires_at", 0)
+        }
+    return None
 
 def refresh_access_token(refresh_token):
     """Trades a refresh token for a fresh access token if credentials are near expiry."""
@@ -132,9 +126,6 @@ def refresh_access_token(refresh_token):
 
 def get_valid_access_token():
     """Master controller for retrieving a usable token, handling refresh if necessary."""
-    if "whoop_token" in st.session_state and st.session_state.whoop_token:
-        return st.session_state.whoop_token
-        
     tokens = load_tokens()
     if not tokens:
         return None
