@@ -13,7 +13,8 @@ from logic import (
     calculate_schedule_load, 
     get_whoop_risk_modifier, 
     calc_glycemic_risk,
-    fetch_health_data
+    fetch_health_data,
+    fetch_nightscout_data
 )
 
 # =====================================================================
@@ -206,3 +207,82 @@ def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mo
     # Alert should not be triggered because weekend is active
     assert status != "🟡 LOAD ALERT"
     assert "🌴 WEEKEND MODE ACTIVE" in message
+
+# =====================================================================
+# NIGHTSCOUT DATA FETCH TESTS
+# =====================================================================
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_success_date(mock_get):
+    """Verify correct dataframe creation when API returns entries with 'date' (timestamp)"""
+    mock_response = mock_get.return_value
+    mock_response.json.return_value = [
+        {"date": 1672531200000, "sgv": 120, "direction": "Flat"},
+        {"date": 1672531500000, "sgv": 125, "direction": "SingleUp"}
+    ]
+
+    df = fetch_nightscout_data("http://mock.url", "token")
+
+    assert df is not None
+    assert len(df) == 2
+    assert "Timestamp" in df.columns
+    assert "Glucose_Value" in df.columns
+    assert "Trend" in df.columns
+
+    # Check values
+    assert df.iloc[0]["Glucose_Value"] == 120
+    assert df.iloc[0]["Trend"] == "Steady"
+    assert df.iloc[1]["Glucose_Value"] == 125
+    assert df.iloc[1]["Trend"] == "Rising"
+
+    # Check if URL was correctly constructed
+    mock_get.assert_called_once()
+    assert "http://mock.url/api/v1/entries.json?count=288&token=token" in mock_get.call_args[0][0]
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_success_datestring(mock_get):
+    """Verify dataframe creation with 'dateString'"""
+    mock_response = mock_get.return_value
+    mock_response.json.return_value = [
+        {"dateString": "2023-01-01T00:00:00Z", "sgv": "130", "direction": "DoubleDown"}
+    ]
+
+    df = fetch_nightscout_data("mock.url", None, count=1)
+
+    assert df is not None
+    assert len(df) == 1
+    assert df.iloc[0]["Glucose_Value"] == 130
+    assert df.iloc[0]["Trend"] == "Falling Fast"
+
+    # Test HTTP prepending
+    mock_get.assert_called_once()
+    assert mock_get.call_args[0][0].startswith("https://mock.url")
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_missing_date_columns(mock_get):
+    """Verify function returns None when neither 'date' nor 'dateString' are present"""
+    mock_response = mock_get.return_value
+    mock_response.json.return_value = [
+        {"sgv": 120, "direction": "Flat"}
+    ]
+
+    df = fetch_nightscout_data("mock.url", "token")
+    assert df is None
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_empty_response(mock_get):
+    """Verify function returns None for empty JSON data"""
+    mock_response = mock_get.return_value
+    mock_response.json.return_value = []
+
+    df = fetch_nightscout_data("mock.url", "token")
+    assert df is None
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_exception(mock_get):
+    """Verify function returns None when requests.get raises an exception"""
+    import requests
+    mock_get.side_effect = requests.exceptions.RequestException("Network Error")
+
+    df = fetch_nightscout_data("mock.url", "token")
+    assert df is None
