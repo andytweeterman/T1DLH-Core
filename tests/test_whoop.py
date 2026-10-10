@@ -3,7 +3,6 @@ import unittest
 from unittest.mock import patch, MagicMock, mock_open
 import time
 import json
-import os
 import requests
 
 class SessionState(dict):
