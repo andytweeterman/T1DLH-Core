@@ -206,3 +206,46 @@ def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mo
     # Alert should not be triggered because weekend is active
     assert status != "🟡 LOAD ALERT"
     assert "🌴 WEEKEND MODE ACTIVE" in message
+
+def test_whoop_modifier_none():
+    """Verify get_whoop_risk_modifier handles None correctly."""
+    result = get_whoop_risk_modifier(None)
+    if isinstance(result, tuple):
+        assert result[0] == 1.0
+        assert result[1] == "No Sync"
+    else:
+        assert result == 1.0
+
+def test_whoop_modifier_empty():
+    """Verify get_whoop_risk_modifier handles an empty dict correctly."""
+    result = get_whoop_risk_modifier({})
+    if isinstance(result, tuple):
+        assert result[0] == 1.0
+        assert result[1] == "No Sync"
+    else:
+        assert result == 1.0
+
+def test_whoop_modifier_missing_keys():
+    """Verify get_whoop_risk_modifier handles missing nested keys correctly."""
+    result = get_whoop_risk_modifier({"score": {}})
+    if isinstance(result, tuple):
+        assert result[0] == 1.0
+        assert result[1] == "🟢 NOMINAL"
+    else:
+        assert result == 1.0
+
+def test_whoop_modifier_zero_values():
+    """Verify get_whoop_risk_modifier avoids false alerts for 0 values."""
+    mock_whoop = {
+        "score": {
+            "recovery_score": 0,
+            "day_strain": 0.0,
+            "sleep_performance_percentage": 0
+        }
+    }
+    result = get_whoop_risk_modifier(mock_whoop)
+    if isinstance(result, tuple):
+        assert result[0] == 1.0
+        assert result[1] == "🟢 NOMINAL"
+    else:
+        assert result == 1.0
