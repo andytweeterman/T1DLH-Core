@@ -1,6 +1,5 @@
 import pytest
 from unittest.mock import patch, MagicMock
-import sys
 
 @patch('google.generativeai.GenerativeModel')
 def test_prompt_injection_fix(mock_generative_model):
