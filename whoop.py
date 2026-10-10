@@ -97,7 +97,8 @@ def save_tokens(token_data):
     st.session_state.whoop_token = token_data.get("access_token")
     
     try:
-        with open(TOKEN_FILE, 'w') as f:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        with os.fdopen(os.open(TOKEN_FILE, flags, 0o600), 'w') as f:
             json.dump(token_data, f)
     except Exception as e:
         logger.error(f"Failed to save tokens locally: {e}")

@@ -145,19 +145,22 @@ class TestWhoop(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch('whoop.open', new_callable=mock_open)
+    @patch('whoop.os.fdopen', new_callable=mock_open)
+    @patch('whoop.os.open', return_value=3)
     @patch('whoop.time.time', return_value=1000)
-    def test_save_tokens(self, mock_time, mock_file):
+    def test_save_tokens(self, mock_time, mock_os_open, mock_fdopen):
         token_data = {"access_token": "my_token", "expires_in": 3600}
         whoop.save_tokens(token_data)
 
         self.assertEqual(mock_st.session_state.whoop_token, "my_token")
         self.assertEqual(token_data['expires_at'], 4600)
-        mock_file.assert_called_once_with(whoop.TOKEN_FILE, 'w')
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        mock_os_open.assert_called_once_with(whoop.TOKEN_FILE, flags, 0o600)
+        mock_fdopen.assert_called_once_with(3, 'w')
 
-    @patch('whoop.open', side_effect=PermissionError)
+    @patch('whoop.os.open', side_effect=PermissionError)
     @patch('whoop.time.time', return_value=1000)
-    def test_save_tokens_exception(self, mock_time, mock_file):
+    def test_save_tokens_exception(self, mock_time, mock_os_open):
         token_data = {"access_token": "my_token", "expires_in": 3600}
         whoop.save_tokens(token_data)
         self.assertEqual(mock_st.session_state.whoop_token, "my_token")
