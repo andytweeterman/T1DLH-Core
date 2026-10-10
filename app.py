@@ -346,7 +346,8 @@ with st.container(border=True):
 
         tir_df = full_data.tail(36)
         if len(tir_df) > 0:
-            low, tgt, elev, high = [len(tir_df[cond])/len(tir_df)*100 for cond in [tir_df['Glucose_Value'] < 80, (tir_df['Glucose_Value'] >= 80) & (tir_df['Glucose_Value'] <= 140), (tir_df['Glucose_Value'] > 140) & (tir_df['Glucose_Value'] <= 180), tir_df['Glucose_Value'] > 180]]
+            counts = pd.cut(tir_df['Glucose_Value'], bins=[-float('inf'), 79.9999, 140, 180, float('inf')]).value_counts(sort=False).values
+            low, tgt, elev, high = counts / len(tir_df) * 100
             if low > 5: vectors.append(f"🔴 {int(low)}% BG Low (3h)")
             elif high > 15: vectors.append(f"🔴 {int(high)}% BG High (3h)")
             elif elev > 25: vectors.append(f"🟡 {int(elev)}% BG Elevated (3h)")
