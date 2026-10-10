@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import pandas as pd
 import numpy as np
 import sys
@@ -13,7 +13,8 @@ from logic import (
     calculate_schedule_load, 
     get_whoop_risk_modifier, 
     calc_glycemic_risk,
-    fetch_health_data
+    fetch_health_data,
+    fetch_nightscout_data
 )
 
 # =====================================================================
@@ -206,3 +207,116 @@ def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mo
     # Alert should not be triggered because weekend is active
     assert status != "🟡 LOAD ALERT"
     assert "🌴 WEEKEND MODE ACTIVE" in message
+
+# =====================================================================
+# FETCH NIGHTSCOUT DATA TESTS
+# =====================================================================
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_success_date(mock_get):
+    """Test successful fetch with date field (Unix timestamp)."""
+    mock_response = MagicMock()
+    # Unix timestamp in milliseconds
+    mock_response.json.return_value = [
+        {"date": 1672531200000, "sgv": 120, "direction": "Flat"},
+        {"date": 1672531500000, "sgv": "125", "direction": "SingleUp"}
+    ]
+    mock_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_response
+
+    df = fetch_nightscout_data("example.com", None)
+
+    # Verify requests.get was called correctly (adds https://)
+    mock_get.assert_called_once_with("https://example.com/api/v1/entries.json?count=288", timeout=30)
+
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "Timestamp" in df.columns
+    assert "Glucose_Value" in df.columns
+    assert "Trend" in df.columns
+
+    # Check values
+    assert df["Glucose_Value"].iloc[0] == 120.0
+    assert df["Glucose_Value"].iloc[1] == 125.0
+    assert df["Trend"].iloc[0] == "Steady" # Flat maps to Steady
+    assert df["Trend"].iloc[1] == "Rising" # SingleUp maps to Rising
+
+    # Check timestamps are sorted
+    assert df["Timestamp"].iloc[0] < df["Timestamp"].iloc[1]
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_success_datestring(mock_get):
+    """Test successful fetch with dateString field and token."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = [
+        {"dateString": "2023-01-01T00:00:00Z", "sgv": 110, "direction": "DoubleDown"}
+    ]
+    mock_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_response
+
+    df = fetch_nightscout_data("http://example.com/", "mytoken", count=100)
+
+    # Verify requests.get was called correctly (keeps http://, adds token)
+    mock_get.assert_called_once_with("http://example.com/api/v1/entries.json?count=100&token=mytoken", timeout=30)
+
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
+    assert df["Glucose_Value"].iloc[0] == 110.0
+    assert df["Trend"].iloc[0] == "Falling Fast" # DoubleDown maps to Falling Fast
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_empty(mock_get):
+    """Test handling of empty response data."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = []
+    mock_get.return_value = mock_response
+
+    df = fetch_nightscout_data("example.com", None)
+    assert df is None
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_missing_date(mock_get):
+    """Test handling when response data lacks date or dateString fields."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = [{"sgv": 100}]
+    mock_get.return_value = mock_response
+
+    df = fetch_nightscout_data("example.com", None)
+    assert df is None
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_invalid_sgv(mock_get):
+    """Test that entries with invalid sgv values are dropped."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = [
+        {"date": 1672531200000, "sgv": 120},
+        {"date": 1672531500000, "sgv": "invalid"},
+        {"date": 1672531800000} # missing sgv
+    ]
+    mock_get.return_value = mock_response
+
+    df = fetch_nightscout_data("example.com", None)
+
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
+    assert df["Glucose_Value"].iloc[0] == 120.0
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_exception(mock_get):
+    """Test that a network exception returns None."""
+    import requests
+    mock_get.side_effect = requests.exceptions.RequestException("Connection error")
+
+    df = fetch_nightscout_data("example.com", None)
+    assert df is None
+
+@patch('logic.requests.get')
+def test_fetch_nightscout_data_http_error(mock_get):
+    """Test that an HTTP error returns None."""
+    import requests
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404 Not Found")
+    mock_get.return_value = mock_response
+
+    df = fetch_nightscout_data("example.com", None)
+    assert df is None
