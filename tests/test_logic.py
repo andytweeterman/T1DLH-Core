@@ -13,12 +13,32 @@ from logic import (
     calculate_schedule_load, 
     get_whoop_risk_modifier, 
     calc_glycemic_risk,
-    fetch_health_data
+    fetch_health_data,
+    generate_travel_advisory
 )
 
 # =====================================================================
 # PYTEST FIXTURES & CORE LOGIC TESTS
 # =====================================================================
+
+def test_generate_travel_advisory():
+    """Verify generate_travel_advisory string generator formats correctly."""
+    # Test default argument
+    assert generate_travel_advisory() == "✈️ TRAVEL PROTOCOL: Today: Shift +2h. Tomorrow: +2h. Day 3: Final +2h."
+
+    # Test positive values
+    assert generate_travel_advisory(9) == "✈️ TRAVEL PROTOCOL: Today: Shift +3h. Tomorrow: +3h. Day 3: Final +3h."
+    assert generate_travel_advisory(12) == "✈️ TRAVEL PROTOCOL: Today: Shift +4h. Tomorrow: +4h. Day 3: Final +4h."
+
+    # Test zero
+    assert generate_travel_advisory(0) == "✈️ TRAVEL PROTOCOL: Today: Shift +0h. Tomorrow: +0h. Day 3: Final +0h."
+
+    # Test negative values
+    assert generate_travel_advisory(-6) == "✈️ TRAVEL PROTOCOL: Today: Shift +-2h. Tomorrow: +-2h. Day 3: Final +-2h."
+
+    # Test float values (it casts shift to int in the formatting)
+    # 7 / 3 = 2.3333, int(2.333) = 2
+    assert generate_travel_advisory(7) == "✈️ TRAVEL PROTOCOL: Today: Shift +2h. Tomorrow: +2h. Day 3: Final +2h."
 
 # --- 1. TEST DATA GENERATION ---
 def test_fetch_health_data_structure():
