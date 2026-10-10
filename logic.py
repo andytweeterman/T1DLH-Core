@@ -3,6 +3,9 @@ import numpy as np
 import requests
 from datetime import datetime, timedelta
 
+EMPTY_DICT = {}
+EMPTY_WEATHER = [{}]
+
 # -----------------------------------------------------------------------------
 # 1. LIVE DATA INTEGRATION (NIGHTSCOUT)
 # -----------------------------------------------------------------------------
@@ -129,7 +132,7 @@ def fetch_environmental_load(lat=38.9847, lon=-77.0947, api_key=""):
     if not api_key: return 1.0, "☁️ WEATHER OFFLINE"
     try:
         data = requests.get(f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric", timeout=10).json()
-        temp_c, weather_id = data.get("main", {}).get("temp", 20), data.get("weather", [{}])[0].get("id", 800)
+        temp_c, weather_id = data.get("main", EMPTY_DICT).get("temp", 20), data.get("weather", EMPTY_WEATHER)[0].get("id", 800)
         
         multiplier, status_tags = 1.0, []
         if temp_c > 32: multiplier -= 0.15; status_tags.append("🔥 HEAT WARNING (Rapid Absorption Risk)")
