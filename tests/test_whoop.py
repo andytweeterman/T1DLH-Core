@@ -91,14 +91,31 @@ class TestWhoop(unittest.TestCase):
             }]
         }
 
-        mock_get.side_effect = [mock_cycle_response, mock_sleep_response]
+        mock_rec_response = MagicMock()
+        mock_rec_response.status_code = 200
+        mock_rec_response.json.return_value = {
+            "records": [{
+                "score": {"recovery_score": 85, "hrv_rmssd_milli": 60.5, "resting_heart_rate": 50}
+            }]
+        }
+
+        def side_effect_func(url, **kwargs):
+            if 'cycle' in url:
+                return mock_cycle_response
+            elif 'sleep' in url:
+                return mock_sleep_response
+            elif 'recovery' in url:
+                return mock_rec_response
+            return MagicMock()
+
+        mock_get.side_effect = side_effect_func
 
         result = whoop.fetch_whoop_recovery("fake_token")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["score"]["recovery_score"], 85)
-        self.assertEqual(result["score"]["hrv_rmssd_milli_seconds"], 60.5)
-        self.assertEqual(result["score"]["resting_heart_rate_beats_per_minute"], 50)
+        self.assertEqual(result["score"]["hrv_rmssd_milli"], 60.5)
+        self.assertEqual(result["score"]["resting_heart_rate"], 50)
         self.assertEqual(result["score"]["day_strain"], 12.5)
         self.assertEqual(result["score"]["sleep_performance_percentage"], 95)
 
@@ -120,13 +137,30 @@ class TestWhoop(unittest.TestCase):
             }]
         }
 
-        mock_get.side_effect = [mock_cycle_response, mock_sleep_response]
+        mock_rec_response = MagicMock()
+        mock_rec_response.status_code = 200
+        mock_rec_response.json.return_value = {
+            "records": [{
+                "score": {"recovery_score": 75, "hrv_rmssd_milli": 55.5, "resting_heart_rate": 52}
+            }]
+        }
+
+        def side_effect_func(url, **kwargs):
+            if 'cycle' in url:
+                return mock_cycle_response
+            elif 'sleep' in url:
+                return mock_sleep_response
+            elif 'recovery' in url:
+                return mock_rec_response
+            return MagicMock()
+
+        mock_get.side_effect = side_effect_func
 
         result = whoop.fetch_whoop_recovery("fake_token")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["score"]["recovery_score"], 75)
-        self.assertEqual(result["score"]["hrv_rmssd_milli_seconds"], 55.5)
+        self.assertEqual(result["score"]["hrv_rmssd_milli"], 55.5)
 
     @patch('whoop.requests.get')
     def test_fetch_whoop_recovery_api_error(self, mock_get):

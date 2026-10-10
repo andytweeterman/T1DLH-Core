@@ -3,6 +3,7 @@ import time
 import requests
 import streamlit as st
 import secrets
+import concurrent.futures
 import logging
 import os
 from urllib.parse import urlencode
@@ -58,9 +59,14 @@ def fetch_whoop_recovery(token):
     headers = {"Authorization": f"Bearer {token}"}
     try:
         # BUGFIX: Querying all three distinct Whoop v2 endpoints
-        cycle_res = requests.get("https://api.prod.whoop.com/developer/v2/cycle", headers=headers, timeout=10)
-        sleep_res = requests.get("https://api.prod.whoop.com/developer/v2/activity/sleep", headers=headers, timeout=10)
-        rec_res = requests.get("https://api.prod.whoop.com/developer/v2/recovery", headers=headers, timeout=10)
+        urls = [
+            "https://api.prod.whoop.com/developer/v2/cycle",
+            "https://api.prod.whoop.com/developer/v2/activity/sleep",
+            "https://api.prod.whoop.com/developer/v2/recovery"
+        ]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(requests.get, url, headers=headers, timeout=10) for url in urls]
+            cycle_res, sleep_res, rec_res = [f.result() for f in futures]
 
         if cycle_res.status_code == 200:
             cycle_recs = cycle_res.json().get('records', [])
