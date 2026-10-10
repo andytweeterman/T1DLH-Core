@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # -----------------------------------------------------------------------------
 # 1. LIVE DATA INTEGRATION (NIGHTSCOUT)
