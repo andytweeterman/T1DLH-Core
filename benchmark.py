@@ -1,5 +1,4 @@
 import timeit
-import pandas as pd
 import numpy as np
 from logic import apply_context_modifiers, fetch_health_data
 
