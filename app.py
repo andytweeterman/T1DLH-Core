@@ -13,7 +13,6 @@ import requests
 import re
 import pandas as pd
 import numpy as np
-import os
 from datetime import datetime, timedelta
 import calendar_sync
 from audio_recorder_streamlit import audio_recorder
