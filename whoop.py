@@ -4,7 +4,6 @@ import requests
 import streamlit as st
 import secrets
 import logging
-import os
 from urllib.parse import urlencode
 
 # Configure logging for this module
