@@ -69,7 +69,7 @@ if not st.session_state.authenticated:
         with st.container(border=True):
             pwd = st.text_input("Access Code", type="password", label_visibility="collapsed", placeholder="Enter Clearance Code...")
             if st.button("Unlock Engine", use_container_width=True, type="primary"):
-                if pwd == st.secrets.get("APP_PASSWORD", "admin"): 
+                if pwd == st.secrets["APP_PASSWORD"]:
                     st.session_state.authenticated = True
                     st.rerun()
                 else:
