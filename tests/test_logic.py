@@ -13,7 +13,8 @@ from logic import (
     calculate_schedule_load, 
     get_whoop_risk_modifier, 
     calc_glycemic_risk,
-    fetch_health_data
+    fetch_health_data,
+    fetch_environmental_load
 )
 
 # =====================================================================
@@ -206,3 +207,69 @@ def test_calc_glycemic_risk_schedule_load_high_weekend_suppressed(mock_whoop, mo
     # Alert should not be triggered because weekend is active
     assert status != "🟡 LOAD ALERT"
     assert "🌴 WEEKEND MODE ACTIVE" in message
+
+# =====================================================================
+# ENVIRONMENTAL LOAD TESTS
+# =====================================================================
+
+def test_env_load_offline():
+    multiplier, status = fetch_environmental_load(api_key="")
+    assert multiplier == 1.0
+    assert status == "☁️ WEATHER OFFLINE"
+
+@patch('logic.requests.get')
+def test_env_load_benign(mock_get):
+    mock_get.return_value.json.return_value = {
+        "main": {"temp": 20},
+        "weather": [{"id": 800}]
+    }
+    multiplier, status = fetch_environmental_load(api_key="mock_key")
+    assert multiplier == 1.0
+    assert status == "☁️ BENIGN ENVIRONMENT"
+
+@patch('logic.requests.get')
+def test_env_load_heat(mock_get):
+    mock_get.return_value.json.return_value = {
+        "main": {"temp": 35},
+        "weather": [{"id": 800}]
+    }
+    multiplier, status = fetch_environmental_load(api_key="mock_key")
+    assert multiplier == 0.85
+    assert status == "🔥 HEAT WARNING (Rapid Absorption Risk)"
+
+@patch('logic.requests.get')
+def test_env_load_cold(mock_get):
+    mock_get.return_value.json.return_value = {
+        "main": {"temp": -5},
+        "weather": [{"id": 800}]
+    }
+    multiplier, status = fetch_environmental_load(api_key="mock_key")
+    assert multiplier == 1.15
+    assert status == "❄️ EXTREME COLD (High Resistance Risk)"
+
+@patch('logic.requests.get')
+def test_env_load_severe(mock_get):
+    mock_get.return_value.json.return_value = {
+        "main": {"temp": 20},
+        "weather": [{"id": 250}]
+    }
+    multiplier, status = fetch_environmental_load(api_key="mock_key")
+    assert multiplier == 1.10
+    assert status == "⛈️ SEVERE WEATHER"
+
+@patch('logic.requests.get')
+def test_env_load_combined(mock_get):
+    mock_get.return_value.json.return_value = {
+        "main": {"temp": -2},
+        "weather": [{"id": 210}]
+    }
+    multiplier, status = fetch_environmental_load(api_key="mock_key")
+    assert multiplier == 1.25
+    assert status == "❄️ EXTREME COLD (High Resistance Risk) | ⛈️ SEVERE WEATHER"
+
+@patch('logic.requests.get')
+def test_env_load_exception(mock_get):
+    mock_get.side_effect = Exception("API Timeout")
+    multiplier, status = fetch_environmental_load(api_key="mock_key")
+    assert multiplier == 1.0
+    assert status == "☁️ WEATHER SYNC UNAVAILABLE"
