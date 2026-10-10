@@ -35,4 +35,10 @@ def fetch_calendar_context():
     Fallback mock function if no local device ICS is provided.
     Returns: meeting_count, speaker_mode
     """
-    return 3, False
+    try:
+        with open('assets/demo_calendar.ics', 'r') as f:
+            cal_data = f.read()
+        return analyze_local_calendar(cal_data)
+    except Exception as e:
+        print(f"Calendar error: {e}")
+        return []
