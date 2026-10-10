@@ -161,15 +161,12 @@ def calculate_tir(df):
 # -----------------------------------------------------------------------------
 # 3. STATE, TIMERS & EVENT LOGGING
 # -----------------------------------------------------------------------------
+import crypto
 def load_ns_config():
-    try:
-        with open("ns_config.json", "r") as f: return json.load(f)
-    except: return {"url": "", "token": ""}
+    return crypto.load_ns_config(st.secrets.get("APP_PASSWORD", ""))
 
 def save_ns_config(url, token):
-    try:
-        with open("ns_config.json", "w") as f: json.dump({"url": url, "token": token}, f)
-    except: pass
+    crypto.save_ns_config(url, token, st.secrets.get("APP_PASSWORD", ""))
 
 ns_cfg = load_ns_config()
 
