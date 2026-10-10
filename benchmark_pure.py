@@ -1,7 +1,6 @@
 import timeit
 import pandas as pd
 import numpy as np
-import logic
 
 def run_benchmark_unoptimized():
     df = pd.DataFrame({'Glucose_Value': np.zeros(288)})
