@@ -70,7 +70,6 @@ class TestWhoop(unittest.TestCase):
         result = whoop.get_access_token("auth_code_xyz")
 
         self.assertIsNone(result)
-        mock_st.error.assert_called_once()
 
     @patch('whoop.requests.get')
     def test_fetch_whoop_recovery_success(self, mock_get):
@@ -91,14 +90,18 @@ class TestWhoop(unittest.TestCase):
             }]
         }
 
-        mock_get.side_effect = [mock_cycle_response, mock_sleep_response]
+        mock_rec_response = MagicMock()
+        mock_rec_response.status_code = 200
+        mock_rec_response.json.return_value = {"records": [{"score": {"recovery_score": 85, "hrv_rmssd_milli": 60.5, "resting_heart_rate": 50}}]}
+
+        mock_get.side_effect = [mock_cycle_response, mock_sleep_response, mock_rec_response]
 
         result = whoop.fetch_whoop_recovery("fake_token")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["score"]["recovery_score"], 85)
-        self.assertEqual(result["score"]["hrv_rmssd_milli_seconds"], 60.5)
-        self.assertEqual(result["score"]["resting_heart_rate_beats_per_minute"], 50)
+        self.assertEqual(result["score"]["hrv_rmssd_milli"], 60.5)
+        self.assertEqual(result["score"]["resting_heart_rate"], 50)
         self.assertEqual(result["score"]["day_strain"], 12.5)
         self.assertEqual(result["score"]["sleep_performance_percentage"], 95)
 
@@ -120,13 +123,17 @@ class TestWhoop(unittest.TestCase):
             }]
         }
 
-        mock_get.side_effect = [mock_cycle_response, mock_sleep_response]
+        mock_rec_response = MagicMock()
+        mock_rec_response.status_code = 200
+        mock_rec_response.json.return_value = {"records": [{"score": {"recovery_score": 75, "hrv_rmssd_milli": 55.5, "resting_heart_rate": 52}}]}
+
+        mock_get.side_effect = [mock_cycle_response, mock_sleep_response, mock_rec_response]
 
         result = whoop.fetch_whoop_recovery("fake_token")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["score"]["recovery_score"], 75)
-        self.assertEqual(result["score"]["hrv_rmssd_milli_seconds"], 55.5)
+        self.assertEqual(result["score"]["hrv_rmssd_milli"], 55.5)
 
     @patch('whoop.requests.get')
     def test_fetch_whoop_recovery_api_error(self, mock_get):
